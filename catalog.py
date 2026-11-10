@@ -98,16 +98,16 @@ SAMPLE_CATALOG = [
     },
     {
         "sku": "ABC-143",
-        "name": "ABC-143 Silver Mist Shell Button",
+        "name": "ABC-143 Natural Spotted River Shell Button (2-Hole)",
         "category": "Shell / MOP",
-        "material": "Trocas Sea Shell",
-        "finish": "Silver-Grey Satin Luster",
-        "holes": "4-Hole Center Well",
-        "size_ligne": "24L (15.2 mm)",
-        "recommended_garment": "Grey Flannel Suits, Overcoats, Wool Vests",
-        "rate_per_gross": 260,
-        "stock_gross": 310,
-        "description": "ABC Buttons official SKU ABC-143. Subtle silvery mist sheen with wash-resistant coating."
+        "material": "Natural River Shell / MOP",
+        "finish": "Natural Iridescent White Pearl with Dark Smoky & Plum Spotted Marks",
+        "holes": "2-Hole with Raised Rim",
+        "size_ligne": "18L (11.5 mm) / 24L (15.2 mm)",
+        "recommended_garment": "Linen Shirts, Designer Kurtis, Casual Blazers, Bohemian Tops",
+        "rate_per_gross": 290,
+        "stock_gross": 480,
+        "description": "ABC Buttons official SKU ABC-143. Genuine 2-hole natural river shell buttons featuring organic dark smoky and plum surface markings. Distinctive natural spotted pattern on lustrous white pearl base."
     },
     {
         "sku": "ABC-144",
