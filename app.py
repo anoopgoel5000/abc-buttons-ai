@@ -480,20 +480,38 @@ with tabs[1]:
                     </div>
                     """, unsafe_allow_html=True)
     else:
-        display_df = df.copy()
-        renamed_df = display_df[[
-            "sku", "name", "category", "size_ligne", "holes", "recommended_garment", "rate_per_gross", "stock_gross"
-        ]].rename(columns={
-            "sku": "SKU Code",
-            "name": "Button Description",
-            "category": "Category",
-            "size_ligne": "Size (Ligne)",
-            "holes": "Holes / Shank",
-            "recommended_garment": "Recommended Garments",
-            "rate_per_gross": "Price (₹ / Gross)",
-            "stock_gross": "Ready Stock (Gross)"
-        })
-        st.dataframe(renamed_df, use_container_width=True, hide_index=True)
+        st.markdown("### 📊 Interactive Live Catalog & Stock Editor (Excel-Style)")
+        st.caption("Aap yahan seedha kisi bhi button ki **Stock Quantity (Gross)** ya **Rate** par click karke use live edit kar sakte hain:")
+        
+        edit_df = pd.DataFrame(st.session_state.live_catalog)
+        display_cols = ["sku", "name", "category", "size_ligne", "rate_per_gross", "stock_gross"]
+        
+        edited_df = st.data_editor(
+            edit_df[display_cols],
+            column_config={
+                "sku": st.column_config.TextColumn("SKU Code", disabled=True),
+                "name": st.column_config.TextColumn("Button Description", disabled=True),
+                "category": st.column_config.TextColumn("Category", disabled=True),
+                "size_ligne": st.column_config.TextColumn("Size (Ligne)", disabled=True),
+                "rate_per_gross": st.column_config.NumberColumn("Price (₹ / Gross)", min_value=1, step=5, format="₹%d"),
+                "stock_gross": st.column_config.NumberColumn("Ready Stock (Gross)", min_value=0, step=10, format="%d Gr")
+            },
+            use_container_width=True,
+            hide_index=True,
+            key="catalog_live_editor"
+        )
+        
+        c_ed1, c_ed2 = st.columns([1, 3])
+        with c_ed1:
+            if st.button("💾 Save All Stock & Rate Changes", type="primary", use_container_width=True):
+                for _, row in edited_df.iterrows():
+                    sku = row["sku"]
+                    for item in st.session_state.live_catalog:
+                        if item["sku"] == sku:
+                            item["stock_gross"] = int(row["stock_gross"])
+                            item["rate_per_gross"] = float(row["rate_per_gross"])
+                st.toast("🎉 Stock Quantities & Rates updated successfully!")
+                st.rerun()
         
     st.markdown("---")
     
