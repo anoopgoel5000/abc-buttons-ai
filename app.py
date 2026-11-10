@@ -282,8 +282,7 @@ tabs = st.tabs([
     "📊 4. Sample Pipeline & Follow-Up", 
     "🧾 5. 1-Click Quotation", 
     "💳 6. Payment Reminder",
-    "⚙️ 7. System Prompts & AI Rules",
-    "💬 8. WhatsApp Live Simulator (Buyer & Salesman)"
+    "💬 7. WhatsApp Live Simulator (Buyer & Salesman)"
 ])
 
 # ----------------- TAB 1: VISUAL BUTTON MATCHER -----------------
@@ -807,84 +806,8 @@ with tabs[5]:
                 st.toast(f"Payment reminder sent to {buyer_clean_name}!")
                 st.balloons()
 
-# ----------------- TAB 7: SYSTEM PROMPTS & AI RULES -----------------
-with tabs[6]:
-    st.subheader("⚙️ AI System Prompts & Company House Rules Manager")
-    st.caption("यह AI का 'संविधान' (Rulebook) है। ABC Buttons का मैनेजमेंट यहाँ से कंपनी के नियम, भाषा, न्यूनतम ऑर्डर (MOQ) और डिस्काउंट के नियम कभी भी बदल सकता है।")
-    
-    current_prompts = load_system_prompts()
-    
-    prompt_choice = st.radio("Select System Prompt to View / Edit:", [
-        "🔍 1. Visual Matcher & WhatsApp Response Prompt (बटन मैचिंग और बायर को जवाब देने का नियम)",
-        "🏍️ 2. Salesman Sample Logger Prompt (सेल्समैन का नोट पढ़ने और सैंपल रिकॉर्ड बनाने का नियम)",
-        "💳 3. Payment Reminder Prompt (शालीन उधारी वसूली संदेश का नियम)"
-    ])
-    
-    st.markdown("---")
-    
-    if prompt_choice.startswith("🔍"):
-        st.markdown("### 🔍 Visual Matcher & WhatsApp Quote Prompt")
-        st.info("""
-        **इस System Prompt में क्या लिखा है:**
-        1. **पहचान:** AI को 'Chief Merchandising AI for ABC Buttons New Delhi' घोषित किया गया है।
-        2. **इंडस्ट्री का सख्त नियम:** सभी कीमतें और स्टॉक सिर्फ और सिर्फ **GROSS (1 Gr = 144 Pcs)** में होंगे।
-        3. **बातचीत के नियम:** हमेशा 'Namaste / Dear Sir' जैसी बेहद विनम्र और प्रोफेशनल भाषा।
-        4. **सैंपल ऑफर:** हर बायर को मुफ्त सैंपल हैंगर कार्ड ऑफर करना।
-        5. **स्टैंडर्ड डिलीवरी और MOQ:** रेडी-स्टॉक 24 घंटे में, फ्रेश प्रोडक्शन 3-5 दिन, और मिनिमम ऑर्डर 10 Gross।
-        """)
-        
-        vm_text = st.text_area("Live Editable System Prompt:", value=current_prompts.get("visual_matcher", ""), height=350, key="txt_vm")
-        
-        col_s1, col_s2 = st.columns([1, 4])
-        if col_s1.button("💾 Save Changes to Visual Prompt", type="primary"):
-            current_prompts["visual_matcher"] = vm_text
-            save_system_prompts(current_prompts)
-            st.success("✅ System Prompt Updated Successfully! AI will now follow your new rules immediately.")
-            
-    elif prompt_choice.startswith("🏍️"):
-        st.markdown("### 🏍️ Autonomous Sample-to-Order AI Sales Agent Prompt")
-        st.info("""
-        **इस System Prompt में क्या लिखा है (Autonomous Sample-to-Order Engine):**
-        1. **20 डेटा पॉइंट्स का एक्सट्रैक्शन:** कंपनी, मर्चेंडाइज़र, लोकेशन, बटन SKU, सैंपल क्वांटिटी और बल्क ऑर्डर का अंदाज़ा।
-        2. **इमीडिएट डिलीवरी ग्रीटिंग:** सैंपल डिलीवर होते ही बायर को तुरंत WhatsApp मैसेज तैयार करना।
-        3. **3-Day व 5-Day ऑटो-शेड्यूलर:** गारमेंट ट्रायल फीडबैक के लिए 3 दिन और 5 दिन बाद का फॉलो-अप मैसेज शेड्यूल करना।
-        4. **लीड टेंपरेचर:** लीड को तुरंत 🔥 **HOT LEAD**, 🟡 **WARM LEAD** या ❄️ **COLD LEAD** में वर्गीकृत करना।
-        """)
-        
-        sl_text = st.text_area("Live Editable System Prompt:", value=current_prompts.get("salesman_logger", ""), height=300, key="txt_sl")
-        
-        col_s1, col_s2 = st.columns([1, 4])
-        if col_s1.button("💾 Save Changes to Salesman Prompt", type="primary"):
-            current_prompts["salesman_logger"] = sl_text
-            save_system_prompts(current_prompts)
-            st.success("✅ Salesman System Prompt Updated Successfully!")
-            
-    else:
-        st.markdown("### 💳 Polite Payment Reminder AI Agent Prompt")
-        st.info("""
-        **इस System Prompt में क्या लिखा है (Relationship-Preserving Payment Collection):**
-        1. **रिलेशनशिप प्रोटेक्शन:** कभी भी कड़वी, आक्रामक या धमकी भरी भाषा (जैसे 'लीगल एक्शन', 'सप्लाई बंद') का इस्तेमाल नहीं करना।
-        2. **स्मार्ट साइकोलॉजिकल हुक:** पेमेंट आते ही आगामी नए सैंपल्स और प्रोडक्शन को प्रायोरिटी (सबसे पहले) पर डिस्पैच करने का भरोसा देना।
-        3. **ऑटो-बैंक डिटेल्स:** ABC Buttons का आधिकारिक HDFC बैंक खाता विवरण और UTR कंफर्मेशन मांगने का फॉर्मेटेड ड्राफ्ट।
-        4. **6 रिस्पॉन्स हैंडलिंग:** पेमेंट हो चुकी, समय चाहिए, बिल विवाद या वित्तीय कठिनाई पर शालीनता से जवाब देना।
-        """)
-        
-        pr_text = st.text_area("Live Editable System Prompt:", value=current_prompts.get("payment_reminder", ""), height=250, key="txt_pr")
-        
-        col_s1, col_s2 = st.columns([1, 4])
-        if col_s1.button("💾 Save Changes to Payment Prompt", type="primary"):
-            current_prompts["payment_reminder"] = pr_text
-            save_system_prompts(current_prompts)
-            st.success("✅ Payment System Prompt Updated Successfully!")
-            
-    st.markdown("---")
-    if st.button("🔄 Reset All Prompts to Factory Default"):
-        save_system_prompts(DEFAULT_PROMPTS)
-        st.toast("All 3 System Prompts reset to default!")
-        st.rerun()
-
 # ----------------- TAB 8: WHATSAPP LIVE SIMULATOR -----------------
-with tabs[7]:
+with tabs[6]:
     st.subheader("💬 WhatsApp Live Simulator (Buyer & Salesman Live Testing)")
     st.caption("यहाँ बिना किसी सिम कार्ड या WhatsApp API के असली चैट की लाइव टेस्टिंग करें। बायर बनकर सवाल पूछें या सेल्समैन बनकर रिपोर्ट करें!")
 
