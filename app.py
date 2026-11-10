@@ -23,6 +23,158 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# PDF Quotation Generator Setup
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    HAS_REPORTLAB = True
+except Exception:
+    HAS_REPORTLAB = False
+
+def generate_quotation_pdf(buyer_name, buyer_gst, item_sku, item_name, item_size, qty_gross, rate_gross, discount_pct=0):
+    effective_rate = rate_gross * (1 - discount_pct/100.0)
+    subtotal = qty_gross * effective_rate
+    gst = subtotal * 0.12
+    total = subtotal + gst
+    total_pcs = qty_gross * 144
+
+    if not HAS_REPORTLAB:
+        text_content = f"""====================================================
+               ABC BUTTONS PVT. LTD.
+   Manufacturers & Exporters of Natural & Customized Buttons
+   Works: Okhla Phase-II | Regd: Govindpuri / Kalkaji, New Delhi
+   GSTIN: 07AABCA1234F1Z8 | Contact: +91 9310722777
+====================================================
+PROFORMA QUOTATION
+Ref No: ABC-QT-2026-0892 | Date: 10-Nov-2026
+
+BILL TO:
+Buyer: {buyer_name}
+GSTIN: {buyer_gst}
+Payment Terms: 30 Days Credit
+Delivery: 3-5 Working Days
+
+----------------------------------------------------
+ITEM DETAILS:
+SKU: {item_sku} - {item_name}
+Size: {item_size}
+Quantity: {qty_gross} Gross ({total_pcs:,} Individual Pieces)
+Rate / Gross: Rs. {effective_rate:.2f}
+Discount: {discount_pct}%
+
+----------------------------------------------------
+COMMERCIAL SUMMARY:
+Subtotal:       Rs. {subtotal:,.2f}
+GST @ 12%:      Rs. {gst:,.2f}
+TOTAL PAYABLE:  Rs. {total:,.2f}
+
+----------------------------------------------------
+BANK DETAILS FOR RTGS / NEFT:
+A/C Name:   ABC Buttons Pvt. Ltd.
+Bank Name:  HDFC Bank, Kalkaji Branch
+A/C Number: 50200012345678
+IFSC Code:  HDFC0000123
+====================================================
+"""
+        return text_content.encode("utf-8")
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=18, textColor=colors.HexColor('#0f172a'), spaceAfter=4)
+    sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor('#475569'))
+    
+    story.append(Paragraph('ABC BUTTONS PVT. LTD.', title_style))
+    story.append(Paragraph('Manufacturers & Exporters of Natural & Customized Buttons<br/>Works: Okhla Industrial Area Phase-II | Regd Office: Govindpuri / Kalkaji, New Delhi - 110019<br/>GSTIN: 07AABCA1234F1Z8 | Phone: +91 9310722777 | Email: sales@abcbuttons.com', sub_style))
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#2563eb'), spaceAfter=12))
+
+    meta_data = [
+        [
+            Paragraph('<b>PROFORMA QUOTATION</b><br/><font size=8.5 color=#64748b>Ref No: ABC-QT-2026-0892<br/>Date: 10-Nov-2026<br/>Valid Till: 30-Nov-2026</font>', styles['Normal']),
+            Paragraph(f'<b>BILL TO:</b><br/><b>{buyer_name}</b><br/><font size=8.5 color=#64748b>GSTIN: {buyer_gst}<br/>Payment: 30 Days Credit<br/>Delivery: 3-5 Working Days</font>', styles['Normal'])
+        ]
+    ]
+    t_meta = Table(meta_data, colWidths=[270, 270])
+    t_meta.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#e2e8f0')),
+        ('PADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(t_meta)
+    story.append(Spacer(1, 12))
+
+    headers = [
+        Paragraph('<b>Item Description</b>', styles['Normal']),
+        Paragraph('<b>Qty (Gross)</b>', styles['Normal']),
+        Paragraph('<b>Total Pcs</b>', styles['Normal']),
+        Paragraph('<b>Rate / Gr</b>', styles['Normal']),
+        Paragraph('<b>Amount (INR)</b>', styles['Normal'])
+    ]
+    row = [
+        Paragraph(f'<b>{item_sku}</b> - {item_name}<br/><font size=8 color=#64748b>Size: {item_size} | 100% Export Ready Quality</font>', styles['Normal']),
+        f'{qty_gross} Gr',
+        f'{total_pcs:,} pcs',
+        f'Rs. {effective_rate:.2f}',
+        f'Rs. {subtotal:,.2f}'
+    ]
+    t_items = Table([headers, row], colWidths=[240, 75, 75, 75, 75])
+    t_items.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('TOPPADDING', (0,0), (-1,0), 6),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#ffffff')),
+        ('PADDING', (0,1), (-1,-1), 8),
+    ]))
+    story.append(t_items)
+    story.append(Spacer(1, 8))
+
+    summary_data = [
+        ['', 'Subtotal:', f'Rs. {subtotal:,.2f}'],
+        ['', f'Discount ({discount_pct}%):', f'Rs. -{(qty_gross*rate_gross*discount_pct/100):,.2f}'],
+        ['', 'GST @ 12%:', f'Rs. {gst:,.2f}'],
+        ['', 'Total Payable:', f'Rs. {total:,.2f}']
+    ]
+    t_sum = Table(summary_data, colWidths=[280, 130, 130])
+    t_sum.setStyle(TableStyle([
+        ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
+        ('FONTNAME', (1,-1), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (1,-1), (-1,-1), 11),
+        ('TEXTCOLOR', (1,-1), (-1,-1), colors.HexColor('#166534')),
+        ('LINEABOVE', (1,-1), (-1,-1), 1.5, colors.HexColor('#166534')),
+        ('PADDING', (0,0), (-1,-1), 3),
+    ]))
+    story.append(t_sum)
+    story.append(Spacer(1, 15))
+
+    footer_data = [
+        [
+            Paragraph('<b>Bank Details for RTGS / NEFT:</b><br/><font size=8.5 color=#475569>Account Name: ABC Buttons Pvt. Ltd.<br/>Bank Name: HDFC Bank, Kalkaji Branch<br/>A/C Number: 50200012345678 | IFSC: HDFC0000123</font>', styles['Normal']),
+            Paragraph('<b>For ABC BUTTONS PVT. LTD.</b><br/><br/><br/><i>Authorized Signatory</i><br/><font size=8 color=#64748b>(Computer-generated quotation)</font>', styles['Normal'])
+        ]
+    ]
+    t_footer = Table(footer_data, colWidths=[270, 270])
+    t_footer.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BACKGROUND', (0,0), (0,0), colors.HexColor('#eff6ff')),
+        ('PADDING', (0,0), (-1,-1), 8),
+        ('BOX', (0,0), (0,0), 1, colors.HexColor('#bfdbfe')),
+    ]))
+    story.append(t_footer)
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.getvalue()
+
 # Image directory path
 BASE_DIR = os.path.dirname(__file__)
 IMG_DIR = os.path.join(BASE_DIR, "catalog_images")
@@ -583,10 +735,27 @@ with tabs[4]:
         
         st.write("")
         c_dl1, c_dl2 = st.columns(2)
-        if c_dl1.button("📥 Download Official PDF Quotation", type="primary"):
-            st.toast("Quotation downloaded successfully!")
-        if c_dl2.button("📲 Send Quotation on WhatsApp"):
-            st.toast(f"Quotation PDF sent to {q_buyer} on WhatsApp!")
+        pdf_bytes = generate_quotation_pdf(
+            buyer_name=q_buyer,
+            buyer_gst=q_gst,
+            item_sku=selected_sku,
+            item_name=curr_item['name'],
+            item_size=curr_item.get('size_ligne', ''),
+            qty_gross=q_gross_qty,
+            rate_gross=curr_item['rate_per_gross'],
+            discount_pct=q_discount
+        )
+        safe_buyer = "".join(c for c in q_buyer if c.isalnum() or c in (' ', '_')).strip().replace(' ', '_')
+        c_dl1.download_button(
+            label="📥 Download Official PDF Quotation",
+            data=pdf_bytes,
+            file_name=f"ABC_Quotation_{selected_sku}_{safe_buyer}.pdf",
+            mime="application/pdf" if HAS_REPORTLAB else "text/plain",
+            type="primary",
+            use_container_width=True
+        )
+        if c_dl2.button("📲 Send Quotation on WhatsApp", use_container_width=True):
+            st.toast(f"Quotation PDF ready & shared with {q_buyer} on WhatsApp!")
 
 # ----------------- TAB 6: PAYMENT REMINDER -----------------
 with tabs[5]:
