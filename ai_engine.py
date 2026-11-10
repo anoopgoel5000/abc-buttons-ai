@@ -373,7 +373,7 @@ Return output strictly in JSON format with keys:
   "match_reason": "why this matches perfectly...",
   "alternative_sku": "SKU code",
   "alternative_reason": "why this is also a great choice...",
-  "whatsapp_buyer_draft": "Professional ready-to-send WhatsApp message in Hinglish with price, stock, and sample offer"
+  "whatsapp_buyer_draft": "Short, direct, 1-2 sentence human sales message strictly in this natural format: 'Namaste! Ye [natural button description, e.g. natural spotted shell button] hamare paas ready stock me available hai. Aapko kis size me aur kitni quantity chahiye?'. NEVER include technical SKU codes (e.g. ABC-143), prices, or long corporate text."
 }"""
     system_prompt = f"{base_sys_prompt}\n\nBelow is ABC Buttons' Live Catalog Data:\n{catalog_summary}\n\n{json_instructions}"
     
