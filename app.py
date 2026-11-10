@@ -662,17 +662,23 @@ with tabs[3]:
             </div>
             """, unsafe_allow_html=True)
             
-            c1, c2, c3 = st.columns([2, 1, 1])
-            with c1:
-                custom_msg = f"Namaste {item['contact'].split()[0]} ji! ABC Buttons Delhi se follow-up kar rahe hain. 3 din pehle aapko {item['sku']} ka sample diya tha. Kya foreign buyer se approval aa gaya? Bulk production slot block karne ke liye confirm karein."
-                st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
-            with c2:
-                if st.button(f"📲 Send WhatsApp Follow-up", key=f"btn_wa_{item['id']}"):
-                    st.toast(f"WhatsApp follow-up dispatched to {item['contact']}!")
-            with c3:
-                if st.button(f"✅ Mark Order Won", key=f"btn_won_{item['id']}"):
-                    item['status'] = "🎉 Order Won (Bulk Dispatch)"
-                    st.rerun()
+            is_order_won = "Order Won" in item.get('status', '')
+            if is_order_won:
+                st.success(f"🎉 **Order Confirmed & Won ({item['bulk_est']})!** Sample trial completed. Follow-up automated reminders are STOPPED.")
+            else:
+                c1, c2, c3 = st.columns([2, 1, 1])
+                with c1:
+                    custom_msg = f"Namaste {item['contact'].split()[0]} ji! ABC Buttons Delhi se follow-up kar rahe hain. 3 din pehle aapko {item['sku']} ka sample diya tha. Kya foreign buyer se approval aa gaya? Bulk production slot block karne ke liye confirm karein."
+                    st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
+                with c2:
+                    if st.button(f"📲 Send WhatsApp Follow-up", key=f"btn_wa_{item['id']}"):
+                        st.toast(f"WhatsApp follow-up dispatched to {item['contact']}!")
+                with c3:
+                    if st.button(f"✅ Convert to Order", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
+                        item['status'] = "🎉 Order Won (Bulk Dispatch)"
+                        st.toast(f"🎉 Fantastic! Order confirmed for {item['company']}. Follow-ups stopped.")
+                        st.balloons()
+                        st.rerun()
 
 # ----------------- TAB 5: 1-CLICK B2B QUOTATION -----------------
 with tabs[4]:
