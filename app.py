@@ -246,7 +246,8 @@ if "sample_pipeline" not in st.session_state:
             "bulk_est": "350 Gross (~50,000 Pcs)",
             "date": "05-Nov-2026",
             "days_ago": 3,
-            "status": "Ready for Follow-up"
+            "status": "Ready for Follow-up",
+            "followup_msg": "Hello Amit ji, hope you are doing well! Jo ABC-139 natural shell button ke samples diye the, kya fabric par trial ho paya? Next month wale blazer order ke liye approval mil jaye toh bataiyega, hum bulk stock pehle se reserve karwa denge."
         },
         {
             "id": "SMP-102",
@@ -258,7 +259,8 @@ if "sample_pipeline" not in st.session_state:
             "bulk_est": "175 Gross (~25,000 Pcs)",
             "date": "06-Nov-2026",
             "days_ago": 2,
-            "status": "In Review by Buyer"
+            "status": "In Review by Buyer",
+            "followup_msg": "Namaste Pooja ji! Jo turquoise shell button (ABC-142) ke samples share kiye the, kya buyer review complete ho gaya? Koi specific size ya shade aur dekhna ho toh bataiyega."
         },
         {
             "id": "SMP-103",
@@ -270,7 +272,8 @@ if "sample_pipeline" not in st.session_state:
             "bulk_est": "850 Gross (~1,22,000 Pcs)",
             "date": "07-Nov-2026",
             "days_ago": 1,
-            "status": "Sample Dispatched"
+            "status": "Sample Dispatched",
+            "followup_msg": "Namaste Rajesh ji! ABC-141 smoky gunmetal shell button ke samples dispatch ho gaye hain. Receive hote hi fabric trial karwa lijiye, bulk order ke liye stock ready hai."
         }
     ]
 
@@ -564,7 +567,7 @@ with tabs[2]:
     
     with col_s1:
         st.markdown("**Salesman's Quick Note (Text or Voice Transcript):**")
-        default_note = "Aaj Shahi Exports, Sector 59 Noida gaya tha. Merchandiser Amit Sharma ko ABC-139 natural shell button ka 25 piece ka sample hanger card de diya. Bola agle mahine blazer order ke liye 350 Gross (~50,000 piece) ka bulk order final kar sakta hai."
+        default_note = "Aaj Shahi Exports Noida gaya tha, Amit Sharma ji se mila. Unko natural white shell button ka sample card de diya. Bole agle mahine 350 Gross ka bulk order final kar sakte hain."
         sales_note = st.text_area("Salesman Field Update:", value=default_note, height=120)
         
         salesman_name = st.selectbox("Salesman Name:", [
@@ -619,6 +622,11 @@ with tabs[2]:
             
             if st.button("➕ Add to Live Follow-Up Pipeline (Tab 4)", type="primary"):
                 sku_clean = ", ".join(p['button_sku_or_description']) if isinstance(p.get('button_sku_or_description'), list) else p.get('button_sku_or_description', 'ABC Buttons Sample')
+                ai_fu = p.get("first_followup_message") or p.get("whatsapp_followup_message")
+                if not ai_fu:
+                    contact_fname = (p.get("contact_person") or "Sir").split()[0]
+                    ai_fu = f"Hello {contact_fname} ji, hope you are doing well! Jo {sku_clean} ke samples drop kiye the, kya fabric par trial ho paya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
+
                 new_entry = {
                     "id": f"SMP-10{len(st.session_state.sample_pipeline)+1}",
                     "company": p.get("company_name", "New Buyer"),
@@ -629,7 +637,8 @@ with tabs[2]:
                     "bulk_est": p.get("bulk_requirement_estimate", "TBD"),
                     "date": "Today",
                     "days_ago": 0,
-                    "status": "Sample Delivered"
+                    "status": "Sample Delivered",
+                    "followup_msg": ai_fu
                 }
                 st.session_state.sample_pipeline.insert(0, new_entry)
                 st.success("✅ Successfully added to Pipeline! Open Tab 4 to see it.")
@@ -668,8 +677,11 @@ with tabs[3]:
             else:
                 c1, c2, c3 = st.columns([2, 1, 1])
                 with c1:
-                    custom_msg = f"Namaste {item['contact'].split()[0]} ji! ABC Buttons Delhi se follow-up kar rahe hain. 3 din pehle aapko {item['sku']} ka sample diya tha. Kya foreign buyer se approval aa gaya? Bulk production slot block karne ke liye confirm karein."
-                    st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
+                    custom_msg = item.get("followup_msg")
+                    if not custom_msg:
+                        contact_fname = item['contact'].split()[0]
+                        custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
+                    st.caption(f"Suggested Follow-Up (AI 100% Human Draft): *\"{custom_msg}\"*")
                 with c2:
                     if st.button(f"📲 Send WhatsApp Follow-up", key=f"btn_wa_{item['id']}"):
                         st.toast(f"WhatsApp follow-up dispatched to {item['contact']}!")
