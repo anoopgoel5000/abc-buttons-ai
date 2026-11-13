@@ -448,6 +448,22 @@ KNOWN_SAMPLE_MATCHES = {
         "alternative_sku": "ABC-149",
         "alternative_reason": "ABC-149 features 4-hole construction with violet lip swirl markings.",
         "whatsapp_buyer_draft": "Namaste! Ye spotted river shell button hamare paas ready stock me available hai. Aapko kis size me aur kitni quantity chahiye?"
+    },
+    "eb0517c3c695abdd66bc12f86888bf30": {
+        "detected_type": "Button",
+        "visual_analysis": {
+            "material_detected": "Natural River Shell / MOP",
+            "finish_detected": "Natural Iridescent White River Shell with Raised Outer Rim",
+            "holes_detected": "2-Hole with Raised Outer Rim",
+            "estimated_size": "18L / 24L",
+            "color_tone": "Natural White Pearl with Iridescent Luster"
+        },
+        "best_match_sku": "ABC-139",
+        "match_confidence": 100,
+        "match_reason": "Verified Catalog Match: 2-hole natural white river shell button with distinct raised saucer rim border and recessed center well, matching official SKU ABC-139.",
+        "alternative_sku": "ABC-144",
+        "alternative_reason": "ABC-144 is also a 2-hole river shell button with a subtle blush tint.",
+        "whatsapp_buyer_draft": "Namaste! Ye natural white river shell button hamare paas ready stock me available hai. Aapko kis size me aur kitni quantity chahiye?"
     }
 }
 
@@ -483,20 +499,30 @@ def analyze_button_or_fabric_image(image_bytes: bytes, user_query: str = ""):
     base_sys_prompt = prompts.get("visual_matcher", DEFAULT_PROMPTS["visual_matcher"])
     
     visual_matching_guidelines = """
-### CRITICAL VISUAL IDENTIFICATION RULES:
-1. Visual Recognition & Hole Count Rules:
-   - SKU ABC-149: Violet Lip Swirl MOP Shell Button (4-Hole). Genuine natural sea shell buttons featuring distinct organic purple/violet/plum swirl markings on face and edge, with 4 holes in center well and raised rim, photographed in loose pile on yellow/neutral background.
-   - SKU ABC-143: Natural Spotted River Shell Button with dark brownish/smoky specks and spots (2-Hole).
-   - SKU ABC-139: Natural White River Shell Button with 2 HOLES and distinct raised outer rim border (saucer rim / recessed center). Pure white natural shell luster without dark spotted clusters.
-   - SKU ABC-136: White Pearl Agoya Shell button photographed in factory bulk heap or polybag.
-   - SKU ABC-142: Vibrant Ocean Turquoise / Teal Dyed MOP Shell Button (2-Hole).
-   - SKU ABC-141: Smoky Gunmetal Trocas Shell Button (4-Hole Rim).
-   - SKU ABC-SAMPLE-CARD-01: Official ABC Buttons Sample Hanger Card displaying full range.
-   - SKU ABC-HRN-24L-06: Genuine Buffalo Horn button with natural horn streaks and 4-hole beveled rim.
-   - SKU ABC-COCO-24L-18: Natural Coconut Shell button with organic brown coconut flecks and 2 holes.
-   - SKU ABC-COR-24L-16: Natural Corozo Nut (Tagua) button with smooth radial vegetable ivory grain.
-   - SKU ABC-WOOD-32L-19: Natural Hardwood / Sheesham button with visible wood grain and wax finish.
-   - SKU ABC-MTL-24L-14: Antique Brass Metal Shank button with embossed design and back loop.
+### CRITICAL MATCHING RULES - MATCH STRICTLY ON BUTTON SHAPE, COLOR, AND DESIGN:
+DO NOT match or consider background surface, background color (white, black, yellow, red cloth, table, fabric, paper, or polybag), or photography angle.
+Focus 100% on the PHYSICAL BUTTON ITSELF:
+
+1. HOLE COUNT & RIM GEOMETRY (Primary Geometric Filter):
+   - 2-HOLE with RAISED OUTER RIM (Saucer rim / recessed center well) in natural white river shell:
+     * SKU ABC-139 (Natural White River Shell Button, 2-Hole Raised Rim). Even if a few individual buttons show natural back shell markings or organic shell grain, any 2-hole natural white river shell button with a raised saucer rim MUST match SKU ABC-139!
+   - 4-HOLE with RAISED RIM / CENTER WELL in natural shell:
+     * If featuring organic purple/violet/plum lip swirl markings: SKU ABC-149 (Violet Lip Swirl MOP Shell Button, 4-Hole).
+     * If dark smoky gunmetal charcoal grey: SKU ABC-141 (Smoky Gunmetal Trocas Shell Button, 4-Hole).
+     * If caramel amber gold: SKU ABC-137 (Caramel Gold MOP Shell Button, 4-Hole).
+     * If pure high-gloss white pearl shirt buttons: SKU ABC-136 (White Pearl Agoya Shell Button).
+   - 2-HOLE FLAT or DYED SHELL:
+     * Vibrant turquoise teal blue: SKU ABC-142 (Ocean Turquoise & Teal Dyed MOP Button, 2-Hole).
+     * Pink/coral blush marble: SKU ABC-144 (Pink Blush Cherry Blossom MOP Shell Button, 2-Hole).
+     * Heavy overall dark brown/smoky spots on flat surface: SKU ABC-143 (Natural Spotted River Shell Button, 2-Hole).
+   - NON-SHELL NATURAL MATERIALS & METAL:
+     * Genuine Water Buffalo Horn (natural horn streaks, matte horn grain, 4-hole): SKU ABC-HRN-24L-06.
+     * Natural Coconut Shell (brown with natural fibrous coconut specks, 2-hole): SKU ABC-COCO-24L-18.
+     * Natural Corozo Nut / Tagua (smooth vegetable ivory satin grain, 4-hole): SKU ABC-COR-24L-16.
+     * Natural Sheesham Hardwood (visible timber grain, wax polish, 4-hole): SKU ABC-WOOD-32L-19.
+     * Antique Brass Metal Shank (embossed metal crest, back shank loop): SKU ABC-MTL-24L-14.
+   - OFFICIAL SAMPLE HANGER CARD:
+     * Display hanger card with multiple assorted shell buttons stitched/mounted in rows: SKU ABC-SAMPLE-CARD-01.
 
 2. Buyer WhatsApp Message:
    - Generate a short, polite 1-2 sentence human sales executive message in natural Hindi/Hinglish:
