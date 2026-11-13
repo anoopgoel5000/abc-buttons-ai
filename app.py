@@ -753,7 +753,7 @@ with tabs[4]:
         q_buyer = st.text_input("Buyer Company Name:", value=default_buyer)
         q_gst = st.text_input("Buyer GSTIN:", value=default_gst)
         
-        sku_options = [x["sku"] + " - " + x["name"] for x in st.session_state.live_catalog]
+        sku_options = [x["name"] if x["name"].startswith(x["sku"]) else f"{x['sku']} - {x['name']}" for x in st.session_state.live_catalog]
         default_index = 0
         for idx, opt in enumerate(sku_options):
             if default_sku_code in opt:
@@ -761,7 +761,7 @@ with tabs[4]:
                 break
                     
         selected_sku_text = st.selectbox("Select Button SKU:", sku_options, index=default_index)
-        selected_sku = selected_sku_text.split(" - ")[0]
+        selected_sku = selected_sku_text.split()[0]
         curr_item = next(x for x in st.session_state.live_catalog if x["sku"] == selected_sku)
         
         q_gross_qty = st.number_input("Order Quantity in GROSS (1 Gross = 144 Pcs):", min_value=5, max_value=10000, value=default_gross, step=5)
