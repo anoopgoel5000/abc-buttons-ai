@@ -39,7 +39,7 @@ SAMPLE_CATALOG = [
         "finish": "Deep Dark Charcoal Luster with Green/Pink Iridescence",
         "holes": "4-Hole",
         "size_ligne": "24L (15.2 mm)",
-        "recommended_garment": "Black Tuxedos, Navy Evening Blazers, Luxury Outerwear",
+        "recommended_garment": "Black Tuxedos, Navy Evening Wear, Luxury Outerwear",
         "rate_per_gross": 390,
         "stock_gross": 195,
         "description": "ABC Buttons official SKU ABC-138. Premium dark Tahitian oyster shell with peacock overtone iridescence."
@@ -65,7 +65,7 @@ SAMPLE_CATALOG = [
         "finish": "Metallic Bronze Sheen",
         "holes": "4-Hole Rim",
         "size_ligne": "20L (12.7 mm)",
-        "recommended_garment": "Brown Linen Blazers, Chinos, Bespoke Trousers",
+        "recommended_garment": "Brown Linen Trousers, Chinos, Bespoke Tailoring",
         "rate_per_gross": 270,
         "stock_gross": 340,
         "description": "ABC Buttons official SKU ABC-140. Unique bronze earth-tone shell with natural organic streaks."
@@ -98,16 +98,16 @@ SAMPLE_CATALOG = [
     },
     {
         "sku": "ABC-143",
-        "name": "ABC-143 Natural Spotted River Shell Button (2-Hole Flat Rimless)",
+        "name": "ABC-143 Natural Spotted River Shell Button (2-Hole)",
         "category": "Shell / MOP",
         "material": "Natural River Shell / MOP",
-        "finish": "Flat polished surface, organic dark mottled spots, completely flat disk with no raised border",
-        "holes": "2-Hole Flat Disk (Rimless / Completely Flat, NO Raised Rim)",
+        "finish": "Natural river shell with organic dark smoky and plum mottled spots / markings",
+        "holes": "2-Hole (Raised Rim or Flat)",
         "size_ligne": "18L (11.5 mm) / 24L (15.2 mm)",
-        "recommended_garment": "Linen Shirts, Designer Kurtis, Casual Blazers, Bohemian Tops",
+        "recommended_garment": "Linen Shirts, Designer Kurtis, Summer Tops, Casual Tailoring",
         "rate_per_gross": 290,
         "stock_gross": 480,
-        "description": "ABC Buttons official SKU ABC-143. Genuine 2-hole flat rimless river shell buttons without raised rim, loose bulk pile on neutral yellow wooden surface."
+        "description": "ABC Buttons official SKU ABC-143. Genuine 2-hole river shell buttons featuring natural organic dark spots and markings."
     },
     {
         "sku": "ABC-144",
@@ -208,7 +208,7 @@ SAMPLE_CATALOG = [
         "finish": "Smoky Charcoal Pearl Luster with Red Silk Oyster Presentation",
         "holes": "2-Hole Rim",
         "size_ligne": "24L (15.2 mm)",
-        "recommended_garment": "Formal Tuxedos, Dark Linen Kurtas, Evening Blazers, Designer Waistcoats",
+        "recommended_garment": "Formal Tuxedos, Dark Linen Kurtas, Evening Tailoring, Designer Waistcoats",
         "rate_per_gross": 340,
         "stock_gross": 390,
         "description": "ABC Buttons official SKU ABC-151. Premium Tahitian black lip pearl oyster button with deep charcoal iridescence. 2-hole rim design for high-end tailoring."

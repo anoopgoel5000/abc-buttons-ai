@@ -76,8 +76,8 @@ Official Contact: Call / WhatsApp: 9310722777.
 2. SIZING IN LIGNE: Button sizing is strictly measured in Ligne (L):
    - 14L (approx. 9.0 mm) - Sleeve placket / collar
    - 16L / 18L (approx. 11.5 mm) - Standard formal shirts, kurtis, cuffs
-   - 24L (approx. 15.2 mm) - Lightweight jackets, blazers, waistcoats
-   - 32L (approx. 20.3 mm) - Heavy winter blazers, overcoats, sherwanis
+   - 24L (approx. 15.2 mm) - Lightweight jackets, waistcoats, standard kurtas
+   - 32L (approx. 20.3 mm) - Heavy winter overcoats, sherwanis, outerwear
 
 ---
 

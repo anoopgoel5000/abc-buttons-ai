@@ -2,6 +2,7 @@ import streamlit as st
 import datetime
 import json
 import os
+import urllib.parse
 import importlib
 import pandas as pd
 from PIL import Image
@@ -206,8 +207,33 @@ IFSC Code:  HDFC0000123
 BASE_DIR = os.path.dirname(__file__)
 IMG_DIR = os.path.join(BASE_DIR, "catalog_images")
 TEST_DIR = os.path.join(BASE_DIR, "test_inquiries")
+DATA_FILE = os.path.join(BASE_DIR, "data_store.json")
 os.makedirs(IMG_DIR, exist_ok=True)
 os.makedirs(TEST_DIR, exist_ok=True)
+
+def load_persistent_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_persistent_data():
+    try:
+        payload = {
+            "sample_pipeline": st.session_state.get("sample_pipeline", []),
+            "catalog_overrides": {
+                x["sku"]: {"stock_gross": x.get("stock_gross", 0), "rate_per_gross": x.get("rate_per_gross", 0)}
+                for x in st.session_state.get("live_catalog", [])
+            },
+            "quotation_history": st.session_state.get("quotation_history", [])
+        }
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 # Custom Styling for Premium B2B feel
 st.markdown("""
@@ -257,9 +283,17 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+persisted = load_persistent_data()
+
 # Ensure full updated catalog (Strictly 100% Genuine Real Photo SKUs)
 if "live_catalog" not in st.session_state or len(st.session_state.live_catalog) != len(SAMPLE_CATALOG) or any(x["sku"] not in [s["sku"] for s in SAMPLE_CATALOG] for x in st.session_state.live_catalog):
     st.session_state.live_catalog = [dict(x) for x in SAMPLE_CATALOG]
+    if "catalog_overrides" in persisted:
+        for it in st.session_state.live_catalog:
+            if it["sku"] in persisted["catalog_overrides"]:
+                ov = persisted["catalog_overrides"][it["sku"]]
+                it["stock_gross"] = ov.get("stock_gross", it["stock_gross"])
+                it["rate_per_gross"] = ov.get("rate_per_gross", it["rate_per_gross"])
 else:
     # Always keep master attributes (name, holes, finish, description) updated
     sample_map = {s["sku"]: s for s in SAMPLE_CATALOG}
@@ -274,47 +308,56 @@ else:
             item["category"] = master.get("category", "")
 
 if "sample_pipeline" not in st.session_state:
-    st.session_state.sample_pipeline = [
-        {
-            "id": "SMP-101",
-            "company": "Shahi Exports Pvt. Ltd.",
-            "contact": "Amit Sharma (Merchandiser)",
-            "location": "Noida Sector 59",
-            "sku": "ABC-139 (Natural River Shell)",
-            "sample_qty": "25 pcs (Hanger Card)",
-            "bulk_est": "350 Gross (~50,000 Pcs)",
-            "date": "05-Nov-2026",
-            "days_ago": 3,
-            "status": "Ready for Follow-up",
-            "followup_msg": "Hello Amit ji, hope you are doing well! Jo natural shell button ke samples diye the, kya fabric par trial check ho gaya? Bulk order ke liye approval mil jaye toh bataiyega, hum stock pehle se reserve karwa denge."
-        },
-        {
-            "id": "SMP-102",
-            "company": "Orient Craft Limited",
-            "contact": "Pooja Verma (Fabric Sourcing)",
-            "location": "Gurgaon Udyog Vihar",
-            "sku": "ABC-142 (Ocean Turquoise Shell)",
-            "sample_qty": "10 pcs",
-            "bulk_est": "175 Gross (~25,000 Pcs)",
-            "date": "06-Nov-2026",
-            "days_ago": 2,
-            "status": "In Review by Buyer",
-            "followup_msg": "Namaste Pooja ji! Jo turquoise shell button ke samples share kiye the, kya buyer review complete ho gaya? Koi specific size ya shade aur dekhna ho toh bataiyega."
-        },
-        {
-            "id": "SMP-103",
-            "company": "Richa Global Apparels",
-            "contact": "Rajesh Kumar (Purchase Head)",
-            "location": "Okhla Phase 3",
-            "sku": "ABC-141 (Smoky Gunmetal Shell)",
-            "sample_qty": "50 pcs",
-            "bulk_est": "850 Gross (~1,22,000 Pcs)",
-            "date": "07-Nov-2026",
-            "days_ago": 1,
-            "status": "Sample Dispatched",
-            "followup_msg": "Namaste Rajesh ji! Smoky gunmetal shell button ke samples dispatch ho gaye hain. Receive hote hi fabric trial karwa lijiye, bulk order ke liye stock ready hai."
-        }
-    ]
+    if "sample_pipeline" in persisted and len(persisted["sample_pipeline"]) > 0:
+        st.session_state.sample_pipeline = persisted["sample_pipeline"]
+    else:
+        st.session_state.sample_pipeline = [
+            {
+                "id": "SMP-101",
+                "company": "Shahi Exports Pvt. Ltd.",
+                "contact": "Amit Sharma (Merchandiser)",
+                "location": "Noida Sector 59",
+                "phone": "+91 98101 23456",
+                "sku": "ABC-139 (Natural River Shell)",
+                "sample_qty": "25 pcs (Hanger Card)",
+                "bulk_est": "350 Gross (~50,000 Pcs)",
+                "date": "05-Nov-2026",
+                "days_ago": 3,
+                "status": "Ready for Follow-up",
+                "followup_msg": "Hello Amit ji, hope you are doing well! Jo natural shell button ke samples diye the, kya fabric par trial check ho gaya? Bulk order ke liye approval mil jaye toh bataiyega, hum stock pehle se reserve karwa denge."
+            },
+            {
+                "id": "SMP-102",
+                "company": "Orient Craft Limited",
+                "contact": "Pooja Verma (Fabric Sourcing)",
+                "location": "Gurgaon Udyog Vihar",
+                "phone": "+91 98712 34567",
+                "sku": "ABC-142 (Ocean Turquoise Shell)",
+                "sample_qty": "10 pcs",
+                "bulk_est": "175 Gross (~25,000 Pcs)",
+                "date": "06-Nov-2026",
+                "days_ago": 2,
+                "status": "In Review by Buyer",
+                "followup_msg": "Namaste Pooja ji! Jo turquoise shell button ke samples share kiye the, kya buyer review complete ho gaya? Koi specific size ya shade aur dekhna ho toh bataiyega."
+            },
+            {
+                "id": "SMP-103",
+                "company": "Richa Global Apparels",
+                "contact": "Rajesh Kumar (Purchase Head)",
+                "location": "Okhla Phase 3",
+                "phone": "+91 99100 87654",
+                "sku": "ABC-141 (Smoky Gunmetal Shell)",
+                "sample_qty": "50 pcs",
+                "bulk_est": "850 Gross (~1,22,000 Pcs)",
+                "date": "07-Nov-2026",
+                "days_ago": 1,
+                "status": "Sample Dispatched",
+                "followup_msg": "Namaste Rajesh ji! Smoky gunmetal shell button ke samples dispatch ho gaye hain. Receive hote hi fabric trial karwa lijiye, bulk order ke liye stock ready hai."
+            }
+        ]
+
+if "quotation_history" not in st.session_state:
+    st.session_state.quotation_history = persisted.get("quotation_history", [])
 
 # Navigation Tabs
 tabs = st.tabs([
@@ -338,14 +381,40 @@ with tabs[0]:
         st.markdown("#### Step 1: बायर की भेजी गई फोटो चुनें या अपलोड करें")
         
         input_choice = st.radio("Testing Source:", [
-            "📷 Use Uploaded Real Button Photos (5 Actual Samples)", 
-            "📤 Upload New Custom Photo from Computer/Phone"
+            "📸 Use Camera (Take Live Photo from Phone / Laptop)",
+            "📁 Upload Photo from Computer / Phone Gallery",
+            "🔘 Use Pre-Loaded Buyer Samples (5 Running Items)"
         ], horizontal=True)
         
         selected_img_bytes = None
         selected_label = ""
         
-        if input_choice.startswith("📷"):
+        if input_choice.startswith("📸"):
+            camera_img = st.camera_input("Point camera directly at button on fabric or table:")
+            if camera_img is not None:
+                img = Image.open(camera_img)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                buf = BytesIO()
+                img.save(buf, format="JPEG")
+                selected_img_bytes = buf.getvalue()
+                selected_label = "Live Camera Capture"
+            buyer_notes = st.text_input("Buyer's WhatsApp message / requirement:", placeholder="e.g. 'Ye button mil jayega kya? 200 gross chahiye'")
+            
+        elif input_choice.startswith("📁"):
+            uploaded_file = st.file_uploader("Upload any button or fabric photo (JPG / PNG):", type=["jpg", "jpeg", "png"])
+            if uploaded_file is not None:
+                img = Image.open(uploaded_file)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                buf = BytesIO()
+                img.save(buf, format="JPEG")
+                selected_img_bytes = buf.getvalue()
+                selected_label = uploaded_file.name
+                st.image(img, caption="Uploaded Photo", use_container_width=True)
+            buyer_notes = st.text_input("Buyer's WhatsApp message:", placeholder="e.g. 'Ye button mil jayega kya? Rate aur availability batao'")
+            
+        else:
             real_photos_map = {
                 "🔘 Real Photo 1: Natural White River Shell (2-Hole Raised Rim)": (
                     "buyer_mop_white_2hole.jpg", 
@@ -384,19 +453,6 @@ with tabs[0]:
                 st.image(img, caption=f"Buyer WhatsApp Photo: {chosen_key}", use_container_width=True)
             
             buyer_notes = st.text_input("Buyer's WhatsApp message:", value=prompt_hint)
-            
-        else:
-            uploaded_file = st.file_uploader("Upload any button or fabric photo (JPG / PNG):", type=["jpg", "jpeg", "png"])
-            if uploaded_file is not None:
-                img = Image.open(uploaded_file)
-                if img.mode != "RGB":
-                    img = img.convert("RGB")
-                buf = BytesIO()
-                img.save(buf, format="JPEG")
-                selected_img_bytes = buf.getvalue()
-                selected_label = uploaded_file.name
-                st.image(img, caption="Uploaded Photo", use_container_width=True)
-            buyer_notes = st.text_input("Buyer's WhatsApp message:", placeholder="e.g. 'Ye button mil jayega kya? Rate aur availability batao'")
 
     with col_result:
         st.markdown("#### Step 2: AI विज़न मिलान और लाइव आउटपुट")
@@ -441,13 +497,25 @@ with tabs[0]:
                         wa_msg = res.get("whatsapp_buyer_draft", "")
                         st.text_area("WhatsApp Message:", value=wa_msg, height=125)
                         
-                        c_b1, c_b2 = st.columns(2)
-                        if c_b1.button("📋 Copy WhatsApp Message"):
-                            st.toast("WhatsApp Message copied to clipboard!")
-                        if c_b2.button("📄 Generate Proforma Quotation for this SKU"):
-                            st.session_state["quote_sku"] = matched_item["sku"]
-                            st.success(f"✅ SKU **{matched_item['sku']}** locked for Quotation! Open **Tab 5 (🧾 1-Click Quotation)** to download PDF.")
-                            st.toast(f"Locked {matched_item['sku']} for Tab 5 Quotation!")
+                        encoded_wa = urllib.parse.quote(wa_msg)
+                        c_wa1, c_wa2 = st.columns([1.2, 1])
+                        with c_wa1:
+                            target_phone = st.text_input("Buyer WhatsApp Mobile # (Optional):", placeholder="+91 9811122334", key="tab1_wa_phone")
+                        
+                        clean_num = "".join(ch for ch in target_phone if ch.isdigit())
+                        wa_url = f"https://wa.me/{clean_num}?text={encoded_wa}" if clean_num else f"https://api.whatsapp.com/send?text={encoded_wa}"
+                            
+                        c_b1, c_b2, c_b3 = st.columns([1.3, 1, 1.2])
+                        with c_b1:
+                            st.link_button("📲 Open in WhatsApp", wa_url, type="primary", use_container_width=True)
+                        with c_b2:
+                            if st.button("📋 Copy Message", use_container_width=True):
+                                st.toast("WhatsApp Message copied to clipboard!")
+                        with c_b3:
+                            if st.button("📄 Generate Quote (Tab 5)", use_container_width=True):
+                                st.session_state["quote_sku"] = matched_item["sku"]
+                                st.success(f"✅ SKU **{matched_item['sku']}** locked for Quotation! Open **Tab 5**.")
+                                st.toast(f"Locked {matched_item['sku']} for Tab 5 Quotation!")
                             
                     except Exception as e:
                         st.error(f"Analysis error: {str(e)}")
@@ -551,7 +619,8 @@ with tabs[1]:
                         if item["sku"] == sku:
                             item["stock_gross"] = int(row["stock_gross"])
                             item["rate_per_gross"] = float(row["rate_per_gross"])
-                st.toast("🎉 Stock Quantities & Rates updated successfully!")
+                save_persistent_data()
+                st.toast("🎉 Stock Quantities & Rates updated & auto-saved!")
                 st.rerun()
         
     st.markdown("---")
@@ -570,6 +639,7 @@ with tabs[1]:
                 required_cols = ["sku", "name", "category", "rate_per_gross", "stock_gross"]
                 if all(col in new_df.columns for col in required_cols):
                     st.session_state.live_catalog = new_df.to_dict(orient="records")
+                    save_persistent_data()
                     st.success(f"🎉 Successfully imported {len(new_df)} buttons from {uploaded_csv.name}!")
                     st.rerun()
                 else:
@@ -680,6 +750,7 @@ with tabs[2]:
                     "followup_msg": ai_fu
                 }
                 st.session_state.sample_pipeline.insert(0, new_entry)
+                save_persistent_data()
                 st.success("✅ Successfully added to Pipeline! Open Tab 4 to see it.")
 
 # ----------------- TAB 4: PIPELINE & FOLLOW-UP -----------------
@@ -722,14 +793,17 @@ with tabs[3]:
                         custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
                     st.caption(f"Suggested Follow-Up (AI 100% Human Draft): *\"{custom_msg}\"*")
                 with c2:
-                    if st.button(f"📲 Send", key=f"btn_wa_{item['id']}"):
-                        st.toast(f"WhatsApp follow-up dispatched to {item['contact']}!")
+                    clean_msg = custom_msg.strip().replace('"', '')
+                    encoded_msg = urllib.parse.quote(clean_msg)
+                    wa_url = f"https://api.whatsapp.com/send?text={encoded_msg}"
+                    st.link_button("📲 Send WhatsApp", wa_url, use_container_width=True)
                 with c3:
                     if st.button(f"📋 Copy", key=f"btn_cp_{item['id']}"):
                         st.toast(f"Copied follow-up for {item['contact']}!")
                 with c4:
                     if st.button(f"✅ Convert to Order", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
                         item['status'] = "🎉 Order Won (Bulk Dispatch)"
+                        save_persistent_data()
                         st.toast(f"🎉 Fantastic! Order confirmed for {item['company']}. Follow-ups stopped.")
                         st.balloons()
                         st.rerun()
@@ -884,8 +958,36 @@ with tabs[4]:
             type="primary",
             use_container_width=True
         )
-        if c_dl2.button("📲 Send Quotation on WhatsApp", use_container_width=True):
-            st.toast(f"Quotation PDF ready & shared with {q_buyer} on WhatsApp!")
+        # WhatsApp Quotation Summary Link
+        quote_summary_msg = (
+            f"Namaste {q_buyer}!\n\n"
+            f"ABC Buttons Private Limited ki taraf se official quotation summary:\n"
+            f"• Button: {curr_item['name']}\n"
+            f"• Quantity: {q_gross_qty} Gross ({q_gross_qty*144:,} Pieces)\n"
+            f"• Rate: Rs. {base_rate:.2f} / Gross\n"
+            f"• Total Payable (incl. GST): Rs. {grand_total:,.2f}\n\n"
+            f"Official PDF Quotation dispatch ke liye ready hai. Kripya purchase order confirm karein."
+        )
+        wa_quote_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(quote_summary_msg)}"
+        c_dl2.link_button("📲 Share Summary on WhatsApp", wa_quote_url, use_container_width=True)
+        
+        # Auto-record in Quotation History
+        new_q_rec = {
+            "Date": today_str,
+            "Buyer": q_buyer,
+            "SKU": selected_sku,
+            "Quantity (Gross)": f"{q_gross_qty} Gr",
+            "Rate / Gross": f"₹{base_rate:.2f}",
+            "Total Payable": f"₹{grand_total:,.2f}"
+        }
+        if not st.session_state.quotation_history or st.session_state.quotation_history[0].get("Total Payable") != new_q_rec["Total Payable"] or st.session_state.quotation_history[0].get("Buyer") != new_q_rec["Buyer"]:
+            st.session_state.quotation_history.insert(0, new_q_rec)
+            save_persistent_data()
+            
+        if st.session_state.quotation_history:
+            st.write("")
+            with st.expander("📜 View Saved Quotations History (Auto-Archived to Disk)", expanded=False):
+                st.dataframe(pd.DataFrame(st.session_state.quotation_history), use_container_width=True, hide_index=True)
 
 # ----------------- TAB 6: PAYMENT REMINDER -----------------
 with tabs[5]:
@@ -945,9 +1047,10 @@ with tabs[5]:
             st.text_area("Ready-to-Send Message:", value=st.session_state["generated_reminder"], height=160)
             c_rm1, c_rm2 = st.columns(2)
             with c_rm1:
-                if st.button("📲 Send via WhatsApp", use_container_width=True):
-                    st.toast(f"Payment reminder sent to {buyer_clean_name}!")
-                    st.balloons()
+                clean_reminder = st.session_state["generated_reminder"]
+                encoded_rem = urllib.parse.quote(clean_reminder)
+                wa_rem_url = f"https://api.whatsapp.com/send?text={encoded_rem}"
+                st.link_button("📲 Send via WhatsApp", wa_rem_url, use_container_width=True)
             with c_rm2:
                 if st.button("📋 Copy Message", use_container_width=True):
                     st.toast("Payment reminder message copied to clipboard!")
