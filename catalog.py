@@ -46,16 +46,16 @@ SAMPLE_CATALOG = [
     },
     {
         "sku": "ABC-139",
-        "name": "ABC-139 Natural White River Shell Button (2-Hole Rim)",
+        "name": "ABC-139 Natural White River Shell Button (2-Hole Raised Rim)",
         "category": "Shell / MOP",
         "material": "River Shell / MOP",
-        "finish": "Natural Iridescent Pearl Gloss with Raised Rim",
-        "holes": "2-Hole with Rim",
-        "size_ligne": "24L (15.2 mm)",
+        "finish": "Natural Iridescent White River Shell with distinct raised outer rim border and recessed center well, subtle organic shell grain and occasional natural back markings",
+        "holes": "2-Hole with Raised Outer Rim (Saucer Rim / Recessed Center)",
+        "size_ligne": "18L / 24L (11.5 - 15.2 mm)",
         "recommended_garment": "Kurta-Pajama, Linen Shirts, Designer Nehru Jackets, Summer Blouses",
         "rate_per_gross": 290,
         "stock_gross": 520,
-        "description": "ABC Buttons official SKU ABC-139. Pure natural river shell with raised outer rim and 2 centered drilled holes. Premium organic luster."
+        "description": "ABC Buttons official SKU ABC-139. Pure natural river shell 2-hole button with distinct raised outer rim border and recessed center well. Premium organic luster. Any 2-hole button with a raised rim is ABC-139."
     },
     {
         "sku": "ABC-140",
@@ -98,16 +98,16 @@ SAMPLE_CATALOG = [
     },
     {
         "sku": "ABC-143",
-        "name": "ABC-143 Natural Spotted River Shell Button (2-Hole)",
+        "name": "ABC-143 Natural Spotted River Shell Button (2-Hole Flat Rimless)",
         "category": "Shell / MOP",
         "material": "Natural River Shell / MOP",
-        "finish": "Natural Iridescent White Pearl with Dark Smoky & Plum Spotted Marks",
-        "holes": "2-Hole with Raised Rim",
+        "finish": "Flat polished surface, organic dark mottled spots, completely flat disk with no raised border",
+        "holes": "2-Hole Flat Disk (Rimless / Completely Flat, NO Raised Rim)",
         "size_ligne": "18L (11.5 mm) / 24L (15.2 mm)",
         "recommended_garment": "Linen Shirts, Designer Kurtis, Casual Blazers, Bohemian Tops",
         "rate_per_gross": 290,
         "stock_gross": 480,
-        "description": "ABC Buttons official SKU ABC-143. Genuine 2-hole natural river shell buttons featuring organic dark smoky and plum surface markings. Distinctive natural spotted pattern on lustrous white pearl base."
+        "description": "ABC Buttons official SKU ABC-143. Genuine 2-hole flat rimless river shell buttons without raised rim, loose bulk pile on neutral yellow wooden surface."
     },
     {
         "sku": "ABC-144",
@@ -264,6 +264,84 @@ SAMPLE_CATALOG = [
         "rate_per_gross": 55,
         "stock_gross": 2200,
         "description": "Simulates natural shell luster at an economical budget. Excellent shine and chemical resistance."
+    },
+    {
+        "sku": "ABC-SAMPLE-CARD-01",
+        "name": "ABC-SAMPLE-CARD-01 Official Shell Button Sample Hanger Card",
+        "category": "Sample Cards",
+        "material": "Natural River Shell & MOP (Assorted Range)",
+        "finish": "Complete Factory Display Hanger Card (ABC-136 to ABC-143)",
+        "holes": "Assorted 2-Hole & 4-Hole Samples",
+        "size_ligne": "14L to 24L Complete Assortment",
+        "recommended_garment": "Garment Exporters, Buying Houses, Merchandisers Selection",
+        "rate_per_gross": 0,
+        "stock_gross": 250,
+        "description": "ABC Buttons official Master Sample Hanger Card showing the running natural river shell and mother-of-pearl product range."
+    },
+    {
+        "sku": "ABC-HRN-24L-06",
+        "name": "ABC-HRN-24L-06 Genuine Water Buffalo Horn Button (24L)",
+        "category": "Natural Horn",
+        "material": "Genuine Buffalo Horn",
+        "finish": "Matte Polished Natural Horn with Organic Streaks",
+        "holes": "4-Hole Beveled Rim",
+        "size_ligne": "24L (15.2 mm)",
+        "recommended_garment": "Suits, Jackets, Premium Coats, Trousers",
+        "rate_per_gross": 420,
+        "stock_gross": 380,
+        "description": "ABC Buttons SKU ABC-HRN-24L-06. Premium genuine water buffalo horn button with natural organic grain and beveled 4-hole center."
+    },
+    {
+        "sku": "ABC-COCO-24L-18",
+        "name": "ABC-COCO-24L-18 Natural Coconut Shell Button (24L)",
+        "category": "Coconut Shell",
+        "material": "Natural Coconut Shell",
+        "finish": "Eco-Friendly Natural Grain Raw Texture",
+        "holes": "2-Hole Rimless",
+        "size_ligne": "24L (15.2 mm)",
+        "recommended_garment": "Linen Shirts, Resort Wear, Eco Fashion, Casual Tops",
+        "rate_per_gross": 135,
+        "stock_gross": 650,
+        "description": "ABC Buttons SKU ABC-COCO-24L-18. 100% biodegradable natural coconut shell button with organic flecks and smooth face."
+    },
+    {
+        "sku": "ABC-COR-24L-16",
+        "name": "ABC-COR-24L-16 Natural Corozo Nut Button (Tagua / Vegetable Ivory)",
+        "category": "Corozo / Tagua",
+        "material": "Natural Corozo Nut (Vegetable Ivory)",
+        "finish": "Smooth Satin Dye-to-Match Luster with Radial Grain",
+        "holes": "4-Hole Recessed Center",
+        "size_ligne": "24L (15.2 mm)",
+        "recommended_garment": "Tailored Suits, Luxury Trousers, Bespoke Overcoats",
+        "rate_per_gross": 360,
+        "stock_gross": 420,
+        "description": "ABC Buttons SKU ABC-COR-24L-16. Vegetable ivory corozo button offering elegant tagua grain, heat resistance, and luxury hand feel."
+    },
+    {
+        "sku": "ABC-WOOD-32L-19",
+        "name": "ABC-WOOD-32L-19 Natural Sheesham Hardwood Button (32L)",
+        "category": "Natural Wood",
+        "material": "Treated Hardwood / Sheesham",
+        "finish": "Waxed Natural Timber Grain",
+        "holes": "4-Hole Wide Center",
+        "size_ligne": "32L (20.3 mm)",
+        "recommended_garment": "Knitwear, Cardigans, Jackets, Sustainable Apparel",
+        "rate_per_gross": 220,
+        "stock_gross": 310,
+        "description": "ABC Buttons SKU ABC-WOOD-32L-19. Eco-friendly natural wood button with durable water-resistant wax coating and deep wood grain."
+    },
+    {
+        "sku": "ABC-MTL-24L-14",
+        "name": "ABC-MTL-24L-14 Antique Brass Metal Shank Button (24L)",
+        "category": "Metal Buttons",
+        "material": "Die-Cast Zinc Alloy (Nickel-Free)",
+        "finish": "Antique Vintage Brass with Embossed Crest",
+        "holes": "Back Shank (Loop)",
+        "size_ligne": "24L (15.2 mm)",
+        "recommended_garment": "Denim Jackets, Military Coats, Heavy Outerwear",
+        "rate_per_gross": 480,
+        "stock_gross": 290,
+        "description": "ABC Buttons SKU ABC-MTL-24L-14. Heavy-duty die-cast zinc alloy metal shank button with antique brass finish, OEKO-TEX certified nickel-free."
     }
 ]
 

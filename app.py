@@ -2,9 +2,14 @@ import streamlit as st
 import datetime
 import json
 import os
+import importlib
 import pandas as pd
 from PIL import Image
 from io import BytesIO, StringIO
+import catalog
+import ai_engine
+importlib.reload(catalog)
+importlib.reload(ai_engine)
 from catalog import SAMPLE_CATALOG
 from ai_engine import (
     analyze_button_or_fabric_image, 
@@ -254,7 +259,19 @@ st.markdown("""
 
 # Ensure full updated catalog (Strictly 100% Genuine Real Photo SKUs)
 if "live_catalog" not in st.session_state or len(st.session_state.live_catalog) != len(SAMPLE_CATALOG) or any(x["sku"] not in [s["sku"] for s in SAMPLE_CATALOG] for x in st.session_state.live_catalog):
-    st.session_state.live_catalog = list(SAMPLE_CATALOG)
+    st.session_state.live_catalog = [dict(x) for x in SAMPLE_CATALOG]
+else:
+    # Always keep master attributes (name, holes, finish, description) updated
+    sample_map = {s["sku"]: s for s in SAMPLE_CATALOG}
+    for item in st.session_state.live_catalog:
+        if item["sku"] in sample_map:
+            master = sample_map[item["sku"]]
+            item["name"] = master["name"]
+            item["holes"] = master["holes"]
+            item["finish"] = master["finish"]
+            item["description"] = master.get("description", "")
+            item["size_ligne"] = master.get("size_ligne", "")
+            item["category"] = master.get("category", "")
 
 if "sample_pipeline" not in st.session_state:
     st.session_state.sample_pipeline = [
@@ -269,7 +286,7 @@ if "sample_pipeline" not in st.session_state:
             "date": "05-Nov-2026",
             "days_ago": 3,
             "status": "Ready for Follow-up",
-            "followup_msg": "Hello Amit ji, hope you are doing well! Jo ABC-139 natural shell button ke samples diye the, kya fabric par trial ho paya? Next month wale blazer order ke liye approval mil jaye toh bataiyega, hum bulk stock pehle se reserve karwa denge."
+            "followup_msg": "Hello Amit ji, hope you are doing well! Jo natural shell button ke samples diye the, kya fabric par trial check ho gaya? Bulk order ke liye approval mil jaye toh bataiyega, hum stock pehle se reserve karwa denge."
         },
         {
             "id": "SMP-102",
@@ -282,7 +299,7 @@ if "sample_pipeline" not in st.session_state:
             "date": "06-Nov-2026",
             "days_ago": 2,
             "status": "In Review by Buyer",
-            "followup_msg": "Namaste Pooja ji! Jo turquoise shell button (ABC-142) ke samples share kiye the, kya buyer review complete ho gaya? Koi specific size ya shade aur dekhna ho toh bataiyega."
+            "followup_msg": "Namaste Pooja ji! Jo turquoise shell button ke samples share kiye the, kya buyer review complete ho gaya? Koi specific size ya shade aur dekhna ho toh bataiyega."
         },
         {
             "id": "SMP-103",
@@ -295,7 +312,7 @@ if "sample_pipeline" not in st.session_state:
             "date": "07-Nov-2026",
             "days_ago": 1,
             "status": "Sample Dispatched",
-            "followup_msg": "Namaste Rajesh ji! ABC-141 smoky gunmetal shell button ke samples dispatch ho gaye hain. Receive hote hi fabric trial karwa lijiye, bulk order ke liye stock ready hai."
+            "followup_msg": "Namaste Rajesh ji! Smoky gunmetal shell button ke samples dispatch ho gaye hain. Receive hote hi fabric trial karwa lijiye, bulk order ke liye stock ready hai."
         }
     ]
 
@@ -460,20 +477,19 @@ with tabs[1]:
     view_mode = st.radio("Choose Catalog Display Mode:", ["🖼️ Visual Photo Grid (Real Images)", "📊 Detailed Data Table"], horizontal=True)
     
     if view_mode.startswith("🖼️"):
-        col_hdr1, col_hdr2 = st.columns([3, 1])
-        with col_hdr1:
-            st.markdown("### 🖼️ ABC Buttons 100% Real Product Photo Gallery (20 Master SKUs)")
-        with col_hdr2:
-            if st.button("🔄 Reset / Sync Master Catalog", key="sync_master_grid_btn", use_container_width=True):
-                st.session_state.live_catalog = list(SAMPLE_CATALOG)
-                st.rerun()
-        
-        # Strictly show ONLY items from SAMPLE_CATALOG (all 100% real photo items)
         valid_skus = set(s["sku"] for s in SAMPLE_CATALOG)
         catalog_items = [x for x in st.session_state.live_catalog if x["sku"] in valid_skus]
         if not catalog_items or len(catalog_items) != len(SAMPLE_CATALOG):
             st.session_state.live_catalog = list(SAMPLE_CATALOG)
             catalog_items = list(SAMPLE_CATALOG)
+
+        col_hdr1, col_hdr2 = st.columns([3, 1])
+        with col_hdr1:
+            st.markdown(f"### 🖼️ ABC Buttons 100% Real Product Photo Gallery ({len(catalog_items)} Master SKUs)")
+        with col_hdr2:
+            if st.button("🔄 Reset / Sync Master Catalog", key="sync_master_grid_btn", use_container_width=True):
+                st.session_state.live_catalog = list(SAMPLE_CATALOG)
+                st.rerun()
             
         # Perfectly Symmetrical Row-by-Row 4-Column Grid
         for row_idx in range(0, len(catalog_items), 4):
@@ -795,6 +811,10 @@ with tabs[4]:
         grand_total = taxable_subtotal + gst_amount
         effective_rate = taxable_subtotal / q_gross_qty if q_gross_qty > 0 else base_rate
         
+        today_date = datetime.date.today()
+        today_str = today_date.strftime('%d-%b-%Y')
+        valid_str = (today_date + datetime.timedelta(days=30)).strftime('%d-%b-%Y')
+        
         discount_html = f"""<p style="margin: 4px 0; color: #16a34a; font-size: 13.5px;"><b>Less: Volume Discount ({q_discount}%):</b> <span style="font-weight: 700;">- ₹{discount_amount:,.2f}</span></p>""" if q_discount > 0 else ""
         
         st.markdown(f"""
@@ -810,7 +830,7 @@ with tabs[4]:
             <p style="font-size: 13px; color: #475569; margin-bottom: 12px;">
                 <b>Bill To:</b> {q_buyer}<br>
                 <b>GSTIN:</b> {q_gst}<br>
-                <b>Date:</b> 13-Nov-2026 | <b>Valid Till:</b> 13-Dec-2026
+                <b>Date:</b> {today_str} | <b>Valid Till:</b> {valid_str}
             </p>
             <table style="width: 100%; font-size: 13px; border-collapse: collapse; margin-bottom: 15px;">
                 <tr style="background: #1e293b; color: #ffffff; font-weight: 700;">
@@ -875,25 +895,36 @@ with tabs[5]:
     p_col1, p_col2 = st.columns([1, 1])
     
     with p_col1:
-        p_buyer = st.selectbox("Select Exporter / Buyer with Pending Balance:", [
-            "Shahi Exports Pvt. Ltd. (₹84,500 Overdue by 12 Days)",
-            "Richa Global Apparels (₹46,200 Overdue by 5 Days)",
-            "Pearl Global Industries (₹1,25,000 Overdue by 18 Days)"
-        ])
+        # Dynamic Overdue Accounts (Default Ledger + Pipeline Buyers)
+        base_accounts = [
+            {"company": "Shahi Exports Pvt. Ltd.", "inv": "INV-2026-0894", "amt": 84500, "days": 12},
+            {"company": "Richa Global Apparels", "inv": "INV-2026-0912", "amt": 46200, "days": 5},
+            {"company": "Pearl Global Industries", "inv": "INV-2026-0785", "amt": 125000, "days": 18}
+        ]
         
-        buyer_clean_name = p_buyer.split(" (")[0]
-        if "Shahi" in p_buyer:
-            invoice_num = "INV-2026-0894"
-            amt = 84500
-            days = 12
-        elif "Richa" in p_buyer:
-            invoice_num = "INV-2026-0912"
-            amt = 46200
-            days = 5
-        else:
-            invoice_num = "INV-2026-0785"
-            amt = 125000
-            days = 18
+        # Merge any new buyers from sample pipeline
+        pipe_accounts = []
+        for idx, p_item in enumerate(st.session_state.sample_pipeline):
+            c_name = p_item.get("company", "").strip()
+            if c_name and not any(c_name.lower() in b["company"].lower() for b in base_accounts):
+                pipe_accounts.append({
+                    "company": c_name,
+                    "inv": f"INV-2026-{950 + idx}",
+                    "amt": 58000,
+                    "days": max(4, p_item.get("days_ago", 3) * 2)
+                })
+        
+        all_accounts = base_accounts + pipe_accounts
+        acc_options = [f"{a['company']} (₹{a['amt']:,} Overdue by {a['days']} Days)" for a in all_accounts]
+        
+        selected_acc_label = st.selectbox("Select Exporter / Buyer with Pending Balance:", acc_options)
+        selected_idx = acc_options.index(selected_acc_label)
+        curr_acc = all_accounts[selected_idx]
+        
+        buyer_clean_name = curr_acc["company"]
+        invoice_num = curr_acc["inv"]
+        amt = curr_acc["amt"]
+        days = curr_acc["days"]
         
         st.markdown(f"""
         <div style="background: #f1f5f9; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 10px;">
@@ -1078,8 +1109,8 @@ with tabs[6]:
                 st.rerun()
 
             col_q3, col_q4 = st.columns(2)
-            if col_q3.button("🧥 3. Blazer Horn Button", use_container_width=True):
-                quick_msg = "Premium winter blazer ke liye genuine horn buttons chahiye 32L size mein. Kya sample card available hai?"
+            if col_q3.button("🔘 3. Natural Horn Button Inquiry", use_container_width=True):
+                quick_msg = "Humein genuine natural buffalo horn buttons chahiye 32L size mein. Kya iska sample card available hai?"
                 st.session_state.buyer_chat.append({"role": "user", "content": quick_msg})
                 with st.spinner("AI responding..."):
                     ai_reply = simulate_buyer_chat(st.session_state.buyer_chat[:-1], quick_msg)
@@ -1175,7 +1206,7 @@ with tabs[6]:
 
             st.markdown("#### ⚡ 1-Click Field Note Simulations:")
             if st.button("🏢 Sample Delivery at Orient Craft (Gurgaon)", use_container_width=True):
-                quick_sm = "Sir aaj Orient Craft Udyog Vihar Gurgaon me Pooja Verma ji ko ABC-142 Turquoise Shell ka sample card de diya hai. Unhe 175 gross ka order chahiye summer blazer program ke liye."
+                quick_sm = "Sir aaj Orient Craft Udyog Vihar Gurgaon me Pooja Verma ji ko Turquoise Shell button ka sample card de diya hai. Unhe 175 gross ka bulk order chahiye."
                 st.session_state.salesman_chat.append({"role": "user", "content": quick_sm})
                 with st.spinner("Processing..."):
                     ai_reply = simulate_salesman_chat(st.session_state.salesman_chat[:-1], quick_sm)
@@ -1183,7 +1214,7 @@ with tabs[6]:
                 st.rerun()
 
             if st.button("🏭 Sample Delivery at Shahi Exports (Noida)", use_container_width=True):
-                quick_sm = "Amit Sharma ji Shahi Exports Sector 59 Noida ko 25 pieces ABC-139 Natural Shell buttons hand-over kar diye. Trial ke baad 400 Gross ka order banega."
+                quick_sm = "Amit Sharma ji Shahi Exports Sector 59 Noida ko 25 pieces Natural Shell buttons hand-over kar diye. Trial ke baad 400 Gross ka order banega."
                 st.session_state.salesman_chat.append({"role": "user", "content": quick_sm})
                 with st.spinner("Processing..."):
                     ai_reply = simulate_salesman_chat(st.session_state.salesman_chat[:-1], quick_sm)
