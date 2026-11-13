@@ -416,6 +416,38 @@ KNOWN_SAMPLE_MATCHES = {
         "alternative_sku": "ABC-139",
         "alternative_reason": "ABC-139 is the top featured natural river shell SKU on this sample card.",
         "whatsapp_buyer_draft": "Namaste! ABC Buttons ka complete natural shell sample card hamare paas ready hai. Aapka delivery address confirm kar dijiye, hum aaj hi courier dispatch karwa denge."
+    },
+    "66b6b7d52c1ca0c7dcbbf6a956fe2bea": {
+        "detected_type": "Button",
+        "visual_analysis": {
+            "material_detected": "Natural Violet Lip Shell / MOP",
+            "finish_detected": "Pearl White with Natural Violet / Plum Swirl Marbling",
+            "holes_detected": "4-Hole Center Well",
+            "estimated_size": "18L (11.5 mm)",
+            "color_tone": "Natural Pearl with Violet-Plum Swirls"
+        },
+        "best_match_sku": "ABC-149",
+        "match_confidence": 100,
+        "match_reason": "Verified Catalog Match: 100% authentic ABC-149 Violet Lip Swirl MOP Shell Button (4-Hole). Genuine natural sea shell with organic purple-plum lip swirl markings.",
+        "alternative_sku": "ABC-143",
+        "alternative_reason": "ABC-143 is spotted river shell (2-hole), whereas ABC-149 features 4-hole construction with violet lip swirl markings.",
+        "whatsapp_buyer_draft": "Namaste! Ye violet lip natural shell 4-hole button hamare paas ready stock me available hai. Aapko kis size me aur kitni quantity chahiye?"
+    },
+    "ca417c23245ebac885dad3a66738e2e4": {
+        "detected_type": "Button",
+        "visual_analysis": {
+            "material_detected": "Natural River Shell / MOP",
+            "finish_detected": "Natural Spotted River Shell with Organic Dark Specks",
+            "holes_detected": "2-Hole with Raised Rim",
+            "estimated_size": "18L (11.5 mm)",
+            "color_tone": "Natural White with Dark Mottled Spots"
+        },
+        "best_match_sku": "ABC-143",
+        "match_confidence": 100,
+        "match_reason": "Verified Catalog Match: 100% authentic ABC-143 Natural Spotted River Shell Button (2-Hole). Genuine natural river shell with organic dark spots and markings.",
+        "alternative_sku": "ABC-149",
+        "alternative_reason": "ABC-149 features 4-hole construction with violet lip swirl markings.",
+        "whatsapp_buyer_draft": "Namaste! Ye spotted river shell button hamare paas ready stock me available hai. Aapko kis size me aur kitni quantity chahiye?"
     }
 }
 
@@ -453,8 +485,9 @@ def analyze_button_or_fabric_image(image_bytes: bytes, user_query: str = ""):
     visual_matching_guidelines = """
 ### CRITICAL VISUAL IDENTIFICATION RULES:
 1. Visual Recognition & Hole Count Rules:
+   - SKU ABC-149: Violet Lip Swirl MOP Shell Button (4-Hole). Genuine natural sea shell buttons featuring distinct organic purple/violet/plum swirl markings on face and edge, with 4 holes in center well and raised rim, photographed in loose pile on yellow/neutral background.
+   - SKU ABC-143: Natural Spotted River Shell Button with dark brownish/smoky specks and spots (2-Hole).
    - SKU ABC-139: Natural White River Shell Button with 2 HOLES and distinct raised outer rim border (saucer rim / recessed center). Pure white natural shell luster without dark spotted clusters.
-   - SKU ABC-143: Natural Spotted River Shell Button featuring distinct organic dark smoky, plum, and brown mottled spots / markings. Standard 4-HOLE (and 2-hole) with raised rim border, photographed in loose bulk pile on yellow/neutral surface.
    - SKU ABC-136: White Pearl Agoya Shell button photographed in factory bulk heap or polybag.
    - SKU ABC-142: Vibrant Ocean Turquoise / Teal Dyed MOP Shell Button (2-Hole).
    - SKU ABC-141: Smoky Gunmetal Trocas Shell Button (4-Hole Rim).

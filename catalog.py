@@ -98,16 +98,16 @@ SAMPLE_CATALOG = [
     },
     {
         "sku": "ABC-143",
-        "name": "ABC-143 Natural Spotted River Shell Button (4-Hole / 2-Hole)",
+        "name": "ABC-143 Natural Spotted River Shell Button (2-Hole)",
         "category": "Shell / MOP",
         "material": "Natural River Shell / MOP",
-        "finish": "Natural river shell with organic dark smoky and plum mottled spots / markings",
-        "holes": "4-Hole & 2-Hole (Standard 4-Hole with Raised Rim)",
+        "finish": "Natural river shell with organic dark smoky spots and mottled markings",
+        "holes": "2-Hole with Raised Rim",
         "size_ligne": "18L (11.5 mm) / 24L (15.2 mm)",
         "recommended_garment": "Linen Shirts, Designer Kurtis, Summer Tops, Casual Tailoring",
         "rate_per_gross": 290,
         "stock_gross": 480,
-        "description": "ABC Buttons official SKU ABC-143. Genuine natural river shell buttons featuring organic dark spots and mottled markings, available in standard 4-hole and 2-hole with raised rim."
+        "description": "ABC Buttons official SKU ABC-143. Genuine 2-hole river shell buttons featuring natural organic dark spots and markings."
     },
     {
         "sku": "ABC-144",
