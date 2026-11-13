@@ -23,9 +23,17 @@ from ai_engine import (
     simulate_salesman_chat
 )
 try:
-    from whatsapp_service import send_whatsapp_text
+    from whatsapp_service import (
+        send_whatsapp_text,
+        send_whatsapp_image,
+        send_whatsapp_document,
+        generate_proforma_card_image
+    )
 except Exception:
     send_whatsapp_text = None
+    send_whatsapp_image = None
+    send_whatsapp_document = None
+    generate_proforma_card_image = None
 
 st.set_page_config(
     page_title="Button-Mitra AI | ABC Buttons Delhi",
@@ -1022,31 +1030,89 @@ with tabs[4]:
             type="primary",
             use_container_width=True
         )
-        # WhatsApp Quotation Summary Link & Meta API
+        # Beautiful Formal B2B Proforma Invoice WhatsApp Text
+        discount_line = f"• Less Discount ({q_discount}%): -₹{discount_amount:,.2f}\n" if q_discount > 0 else ""
+        gst_pct = 12
+        pi_ref = f"PI-{today_date.strftime('%Y')}-{abs(hash(q_buyer + selected_sku)) % 9000 + 1000}"
+        
         quote_summary_msg = (
-            f"Namaste {q_buyer}!\n\n"
-            f"ABC Buttons Private Limited ki taraf se official quotation summary:\n"
-            f"• Button: {curr_item['name']}\n"
-            f"• Quantity: {q_gross_qty} Gross ({q_gross_qty*144:,} Pieces)\n"
-            f"• Rate: Rs. {base_rate:.2f} / Gross\n"
-            f"• Total Payable (incl. GST): Rs. {grand_total:,.2f}\n\n"
-            f"Bank Details: HDFC Bank, Kalkaji Branch | A/C: 50200084920192 | IFSC: HDFC0000123\n"
-            f"Official PDF Quotation dispatch ke liye ready hai. Kripya purchase order confirm karein."
+            f"📋 *PROFORMA INVOICE / RATE ESTIMATE*\n"
+            f"*ABC BUTTONS PRIVATE LIMITED*\n"
+            f"_Govindpuri / Kalkaji, New Delhi - 110019_\n"
+            f"GSTIN: 07AABCA9876P1Z3 | Phone: +91 93157 02804\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"*PI Ref No:* `{pi_ref}`\n"
+            f"*Date:* {today_str}  |  *Valid Till:* {valid_str}\n\n"
+            f"*BUYER / BILL TO:*\n"
+            f"• *Company:* {q_buyer}\n"
+            f"• *GSTIN:* {q_gst}\n"
+            f"────────────────────────────\n"
+            f"*ITEM & QUANTITY DETAILS:*\n"
+            f"────────────────────────────\n"
+            f"• *Product:* {curr_item['name']}\n"
+            f"• *SKU Code:* `{curr_item['sku']}`\n"
+            f"• *Size / Spec:* {curr_item.get('size_ligne', '')} • {curr_item.get('holes', '')}\n"
+            f"• *Order Quantity:* *{q_gross_qty} Gross* (= {q_gross_qty*144:,} Pieces)\n"
+            f"• *Base Rate:* ₹{base_rate:.2f} / Gross (1 Gross = 144 Pcs)\n"
+            f"────────────────────────────\n"
+            f"*BILLING & TAX BREAKUP:*\n"
+            f"────────────────────────────\n"
+            f"• Gross Value: ₹{gross_amount:,.2f}\n"
+            f"{discount_line}"
+            f"• Taxable Subtotal: ₹{taxable_subtotal:,.2f}\n"
+            f"• GST @ {gst_pct}%: ₹{gst_amount:,.2f}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 *NET PAYABLE AMOUNT: ₹{grand_total:,.2f}*\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏦 *BANK DETAILS FOR RTGS / NEFT:*\n"
+            f"• *A/C Name:* ABC Buttons Pvt. Ltd.\n"
+            f"• *Bank:* HDFC Bank, Kalkaji Branch\n"
+            f"• *A/C No:* 50200084920192\n"
+            f"• *IFSC Code:* HDFC0000123\n\n"
+            f"📌 *DISPATCH TERMS:*\n"
+            f"• Ready Ex-Stock (Dispatched within 24-48 hrs of PO confirmation)\n"
+            f"• Quality: Lead-Free, Garment Wash Tested, Oeko-Tex Standard\n"
+            f"• Official Stamped PDF Quotation attached/available on request."
         )
         wa_quote_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(quote_summary_msg)}"
         
-        c_q_btn1, c_q_btn2 = st.columns([1, 1])
+        st.markdown("#### 💬 WhatsApp Proforma Invoice Dispatch:")
+        st.text_area("WhatsApp PI Text (Auto-Formatted):", value=quote_summary_msg, height=140)
+        
+        c_q_btn1, c_q_btn2, c_q_btn3 = st.columns([1, 1.2, 1.2])
         with c_q_btn1:
-            c_dl2.link_button("📲 Share on WhatsApp", wa_quote_url, use_container_width=True)
+            st.link_button("📲 Open in WhatsApp", wa_quote_url, type="primary", use_container_width=True)
+            
         with c_q_btn2:
-            if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_quote", help="Dispatches Quotation via Meta Cloud API"):
-                with st.spinner("Dispatching Official Quotation via Meta API..."):
-                    res_q = send_whatsapp_text("919315702804", quote_summary_msg)
-                    if res_q.get("success"):
-                        st.success("🚀 Quotation Delivered via Official Meta API to +91 93157 02804!")
+            if send_whatsapp_image and st.button("🖼️ Send Visual Card Image", key="send_meta_img_quote", help="Sends high-res Proforma Invoice card directly to WhatsApp via Meta API", use_container_width=True):
+                with st.spinner("Rendering & uploading invoice card image..."):
+                    img_bytes = generate_proforma_card_image(
+                        buyer_name=q_buyer,
+                        buyer_gst=q_gst,
+                        sku=selected_sku,
+                        item_name=curr_item['name'],
+                        item_spec=f"SKU: {curr_item['sku']} • Size: {curr_item.get('size_ligne', '')} • {curr_item.get('holes', '')}",
+                        qty_gross=q_gross_qty,
+                        rate_gross=base_rate,
+                        discount_pct=q_discount,
+                        gst_pct=gst_pct
+                    )
+                    res_img = send_whatsapp_image("919315702804", img_bytes, caption=f"📋 Official Proforma Invoice ({pi_ref}) - ABC Buttons Pvt. Ltd.")
+                    if res_img.get("success"):
+                        st.success("🚀 Visual Invoice Card delivered to WhatsApp!")
                         st.balloons()
                     else:
-                        st.error(f"API Error: {res_q.get('error')}")
+                        st.error(f"Image API Error: {res_img.get('error')}")
+                        
+        with c_q_btn3:
+            if send_whatsapp_document and st.button("📄 Send Official PDF", key="send_meta_doc_quote", help="Dispatches stamped PDF file directly to WhatsApp via Meta API", use_container_width=True):
+                with st.spinner("Uploading and sending official PDF to WhatsApp..."):
+                    res_doc = send_whatsapp_document("919315702804", pdf_bytes, filename=f"ABC_Quotation_{selected_sku}_{safe_buyer}.pdf", caption=f"ABC Buttons Proforma Quotation ({pi_ref})")
+                    if res_doc.get("success"):
+                        st.success("🚀 Official PDF Invoice delivered to WhatsApp!")
+                        st.balloons()
+                    else:
+                        st.error(f"PDF API Error: {res_doc.get('error')}")
         
         # Auto-record in Quotation History
         new_q_rec = {
