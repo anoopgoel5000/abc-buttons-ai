@@ -843,23 +843,29 @@ with tabs[3]:
             if is_order_won:
                 st.success(f"🎉 **Order Confirmed & Won ({item['bulk_est']})!** Sample trial completed. Follow-up automated reminders are STOPPED.")
             else:
-                c1, c2, c3, c4 = st.columns([2.2, 0.9, 0.9, 1.0])
+                c1, c2, c3, c4 = st.columns([2.0, 0.8, 0.8, 0.9])
                 with c1:
                     custom_msg = item.get("followup_msg")
                     if not custom_msg:
                         contact_fname = item['contact'].split()[0]
                         custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
-                    st.caption(f"Suggested Follow-Up (AI 100% Human Draft): *\"{custom_msg}\"*")
+                    st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
                 with c2:
                     clean_msg = custom_msg.strip().replace('"', '')
                     encoded_msg = urllib.parse.quote(clean_msg)
                     wa_url = f"https://api.whatsapp.com/send?text={encoded_msg}"
-                    st.link_button("📲 Send WhatsApp", wa_url, use_container_width=True)
+                    st.link_button("📲 WhatsApp", wa_url, use_container_width=True)
                 with c3:
-                    if st.button(f"📋 Copy", key=f"btn_cp_{item['id']}"):
-                        st.toast(f"Copied follow-up for {item['contact']}!")
+                    if send_whatsapp_text and st.button("⚡ Meta API", key=f"btn_meta_{item['id']}", help="Dispatch via Official Meta Cloud API"):
+                        with st.spinner("Sending follow-up..."):
+                            res_fu = send_whatsapp_text("919315702804", clean_msg)
+                            if res_fu.get("success"):
+                                st.success("Sent to WhatsApp!")
+                                st.toast("Sample follow-up delivered!")
+                            else:
+                                st.error(f"Error: {res_fu.get('error')}")
                 with c4:
-                    if st.button(f"✅ Convert to Order", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
+                    if st.button(f"✅ Won", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
                         item['status'] = "🎉 Order Won (Bulk Dispatch)"
                         save_persistent_data()
                         st.toast(f"🎉 Fantastic! Order confirmed for {item['company']}. Follow-ups stopped.")
@@ -1016,7 +1022,7 @@ with tabs[4]:
             type="primary",
             use_container_width=True
         )
-        # WhatsApp Quotation Summary Link
+        # WhatsApp Quotation Summary Link & Meta API
         quote_summary_msg = (
             f"Namaste {q_buyer}!\n\n"
             f"ABC Buttons Private Limited ki taraf se official quotation summary:\n"
@@ -1024,10 +1030,23 @@ with tabs[4]:
             f"• Quantity: {q_gross_qty} Gross ({q_gross_qty*144:,} Pieces)\n"
             f"• Rate: Rs. {base_rate:.2f} / Gross\n"
             f"• Total Payable (incl. GST): Rs. {grand_total:,.2f}\n\n"
+            f"Bank Details: HDFC Bank, Kalkaji Branch | A/C: 50200084920192 | IFSC: HDFC0000123\n"
             f"Official PDF Quotation dispatch ke liye ready hai. Kripya purchase order confirm karein."
         )
         wa_quote_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(quote_summary_msg)}"
-        c_dl2.link_button("📲 Share Summary on WhatsApp", wa_quote_url, use_container_width=True)
+        
+        c_q_btn1, c_q_btn2 = st.columns([1, 1])
+        with c_q_btn1:
+            c_dl2.link_button("📲 Share on WhatsApp", wa_quote_url, use_container_width=True)
+        with c_q_btn2:
+            if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_quote", help="Dispatches Quotation via Meta Cloud API"):
+                with st.spinner("Dispatching Official Quotation via Meta API..."):
+                    res_q = send_whatsapp_text("919315702804", quote_summary_msg)
+                    if res_q.get("success"):
+                        st.success("🚀 Quotation Delivered via Official Meta API to +91 93157 02804!")
+                        st.balloons()
+                    else:
+                        st.error(f"API Error: {res_q.get('error')}")
         
         # Auto-record in Quotation History
         new_q_rec = {
@@ -1103,13 +1122,22 @@ with tabs[5]:
         if "generated_reminder" in st.session_state:
             st.markdown("### 💬 Generated WhatsApp Message:")
             st.text_area("Ready-to-Send Message:", value=st.session_state["generated_reminder"], height=160)
-            c_rm1, c_rm2 = st.columns(2)
+            c_rm1, c_rm2, c_rm3 = st.columns([1, 1.2, 0.8])
             with c_rm1:
                 clean_reminder = st.session_state["generated_reminder"]
                 encoded_rem = urllib.parse.quote(clean_reminder)
                 wa_rem_url = f"https://api.whatsapp.com/send?text={encoded_rem}"
                 st.link_button("📲 Send via WhatsApp", wa_rem_url, use_container_width=True)
             with c_rm2:
+                if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_reminder", help="Send Payment Reminder via Meta Cloud API"):
+                    with st.spinner("Dispatching Payment Reminder..."):
+                        res_rem = send_whatsapp_text("919315702804", clean_reminder)
+                        if res_rem.get("success"):
+                            st.success("🚀 Payment Reminder Delivered to +91 93157 02804!")
+                            st.balloons()
+                        else:
+                            st.error(f"API Error: {res_rem.get('error')}")
+            with c_rm3:
                 if st.button("📋 Copy Message", use_container_width=True):
                     st.toast("Payment reminder message copied to clipboard!")
 
