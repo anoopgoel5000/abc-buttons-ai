@@ -117,8 +117,13 @@ IFSC Code:  HDFC0000123
         Paragraph('<b>Rate / Gr</b>', styles['Normal']),
         Paragraph('<b>Amount (INR)</b>', styles['Normal'])
     ]
+    clean_item_name = item_name
+    if clean_item_name.startswith(item_sku):
+        clean_item_name = clean_item_name[len(item_sku):].strip(" -")
+    display_title = f"<b>{item_sku}</b> - {clean_item_name}" if clean_item_name else f"<b>{item_sku}</b>"
+    
     row = [
-        Paragraph(f'<b>{item_sku}</b> - {item_name}<br/><font size=8 color=#64748b>Size: {item_size} | 100% Export Ready Quality</font>', styles['Normal']),
+        Paragraph(f'{display_title}<br/><font size=8 color=#64748b>Size: {item_size} | 100% Export Ready Quality</font>', styles['Normal']),
         f'{qty_gross} Gr',
         f'{total_pcs:,} pcs',
         f'Rs. {rate_gross:.2f}',
