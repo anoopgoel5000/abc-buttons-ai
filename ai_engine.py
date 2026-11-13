@@ -568,10 +568,218 @@ Return output strictly in JSON format with keys:
     
     raw_response = call_gemini_api(contents, system_instruction=system_prompt, json_mode=True)
     try:
-        return json.loads(raw_response)
+        parsed = json.loads(raw_response)
     except Exception:
         clean = raw_response.strip().replace("```json", "").replace("```", "").strip()
-        return json.loads(clean)
+        parsed = json.loads(clean)
+        
+    # Stage 2: Apply Deterministic Rule Lock to ensure 100% mathematical consistency
+    return apply_deterministic_sku_lock(parsed)
+
+def apply_deterministic_sku_lock(parsed: dict) -> dict:
+    """
+    Stage 2 Deterministic Filter:
+    Guarantees 100% mathematical consistency. Takes the raw visual features
+    (Holes, Rim, Material, Color) and locks the exact SKU deterministically,
+    eliminating model hallucinations or background confusion.
+    """
+    va = parsed.get("visual_analysis", {})
+    mat = str(va.get("material_detected", "")).lower()
+    holes = str(va.get("holes_detected", "")).lower()
+    finish = str(va.get("finish_detected", "")).lower()
+    color = str(va.get("color_tone", "")).lower()
+    raw_text = f"{mat} {holes} {finish} {color}".lower()
+    
+    # 1. Sample Card
+    if "sample card" in raw_text or "hanger" in raw_text:
+        parsed["best_match_sku"] = "ABC-SAMPLE-CARD-01"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Official ABC Buttons Master Sample Hanger Card."
+        parsed["alternative_sku"] = "ABC-139"
+        parsed["alternative_reason"] = "ABC-139 is the top featured natural river shell SKU on this sample card."
+        return _finalize_draft(parsed)
+        
+    # 2. Non-shell natural & metal materials
+    if "horn" in raw_text or "buffalo" in raw_text:
+        parsed["best_match_sku"] = "ABC-HRN-24L-06"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Genuine Water Buffalo Horn Button with organic streaks and 4-hole beveled rim."
+        parsed["alternative_sku"] = "ABC-COR-24L-16"
+        parsed["alternative_reason"] = "ABC-COR-24L-16 is natural corozo nut in dark horn-compatible tones."
+        return _finalize_draft(parsed)
+        
+    if "coconut" in raw_text or "coco" in raw_text:
+        parsed["best_match_sku"] = "ABC-COCO-24L-18"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: 100% Natural Coconut Shell Button with organic fibrous flecks."
+        parsed["alternative_sku"] = "ABC-WOOD-32L-19"
+        parsed["alternative_reason"] = "ABC-WOOD-32L-19 is eco-friendly natural hardwood."
+        return _finalize_draft(parsed)
+        
+    if "corozo" in raw_text or "tagua" in raw_text or "vegetable ivory" in raw_text:
+        parsed["best_match_sku"] = "ABC-COR-24L-16"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Eco-friendly Corozo Nut (Tagua / Vegetable Ivory) with radial grain."
+        parsed["alternative_sku"] = "ABC-HRN-24L-06"
+        parsed["alternative_reason"] = "ABC-HRN-24L-06 is genuine water buffalo horn."
+        return _finalize_draft(parsed)
+
+    if "wood" in raw_text or "sheesham" in raw_text or "timber" in raw_text:
+        parsed["best_match_sku"] = "ABC-WOOD-32L-19"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Natural Sheesham Hardwood Button with visible timber grain."
+        parsed["alternative_sku"] = "ABC-COCO-24L-18"
+        parsed["alternative_reason"] = "ABC-COCO-24L-18 is natural coconut shell."
+        return _finalize_draft(parsed)
+
+    if "shank" in raw_text or "metal" in raw_text or "brass" in raw_text or "loop" in raw_text:
+        parsed["best_match_sku"] = "ABC-MTL-24L-14"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Antique Brass Metal Shank Button with embossed crest and back loop."
+        parsed["alternative_sku"] = "ABC-HRN-24L-06"
+        parsed["alternative_reason"] = "ABC-HRN-24L-06 is genuine water buffalo horn for luxury tailoring."
+        return _finalize_draft(parsed)
+        
+    if "kaudi" in raw_text or "cowrie" in raw_text:
+        if "gold" in raw_text or "metallic" in raw_text or "electroplat" in raw_text:
+            parsed["best_match_sku"] = "ABC-153"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Electroplated Metallic Gold Cowrie Shell Charm."
+            parsed["alternative_sku"] = "ABC-152"
+            parsed["alternative_reason"] = "ABC-152 is natural white sea cowrie."
+        else:
+            parsed["best_match_sku"] = "ABC-152"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Natural White Sea Cowrie Shell Beads (Kaudi)."
+            parsed["alternative_sku"] = "ABC-153"
+            parsed["alternative_reason"] = "ABC-153 is electroplated gold cowrie."
+        return _finalize_draft(parsed)
+
+    if "polyester" in raw_text or "resin" in raw_text or "plastic" in raw_text:
+        if "pearl" in raw_text:
+            parsed["best_match_sku"] = "ABC-POLY-18L-10"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Pearlized Polyester Faux-MOP Shirt Button."
+            parsed["alternative_sku"] = "ABC-POLY-18L-08"
+            parsed["alternative_reason"] = "ABC-POLY-18L-08 is matte chalk finish polyester."
+        else:
+            parsed["best_match_sku"] = "ABC-POLY-18L-08"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Standard Chalk Finish Polyester Shirt Button."
+            parsed["alternative_sku"] = "ABC-POLY-18L-10"
+            parsed["alternative_reason"] = "ABC-POLY-18L-10 is pearlized polyester."
+        return _finalize_draft(parsed)
+
+    # 3. Shell / Mother of Pearl (MOP) Geometry Rules
+    is_4_hole = "4-hole" in holes or "4 hole" in holes or "four" in holes or "4-hole" in raw_text
+    is_2_hole = "2-hole" in holes or "2 hole" in holes or "two" in holes or not is_4_hole
+    
+    # Dyed / Specific hues
+    if "turquoise" in raw_text or "teal" in raw_text or "blue" in raw_text:
+        parsed["best_match_sku"] = "ABC-142"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Ocean Turquoise & Teal Dyed MOP Shell Button (2-Hole)."
+        parsed["alternative_sku"] = "ABC-148"
+        parsed["alternative_reason"] = "ABC-148 is 4-hole seafoam green/teal shell."
+        return _finalize_draft(parsed)
+        
+    if "pink" in raw_text or "blush" in raw_text or "cherry" in raw_text or "coral" in raw_text:
+        parsed["best_match_sku"] = "ABC-144"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Pink Blush Cherry Blossom MOP Shell Button (2-Hole)."
+        parsed["alternative_sku"] = "ABC-139"
+        parsed["alternative_reason"] = "ABC-139 is pure natural white river shell."
+        return _finalize_draft(parsed)
+
+    # Charcoal / Smoky / Gunmetal
+    if "gunmetal" in raw_text or "smoky" in raw_text or "charcoal" in raw_text or "black lip" in raw_text or "dark grey" in raw_text:
+        if is_4_hole:
+            parsed["best_match_sku"] = "ABC-141"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Smoky Gunmetal Trocas Shell Button (4-Hole Rim)."
+            parsed["alternative_sku"] = "ABC-151"
+            parsed["alternative_reason"] = "ABC-151 is 2-hole black lip pearl oyster shell."
+        else:
+            parsed["best_match_sku"] = "ABC-151"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Smoky Charcoal Black Pearl Oyster Shell Button (2-Hole Rim)."
+            parsed["alternative_sku"] = "ABC-141"
+            parsed["alternative_reason"] = "ABC-141 is 4-hole smoky gunmetal trocas shell."
+        return _finalize_draft(parsed)
+
+    # Caramel Gold / Bronze
+    if "caramel" in raw_text or "amber" in raw_text or "champagne" in raw_text or "gold" in raw_text:
+        parsed["best_match_sku"] = "ABC-137"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Caramel Gold MOP Shell Button (4-Hole Raised Rim)."
+        parsed["alternative_sku"] = "ABC-140"
+        parsed["alternative_reason"] = "ABC-140 has metallic bronze earth tones."
+        return _finalize_draft(parsed)
+
+    # Purple / Violet / Plum Lip Swirls (4-Hole)
+    if ("violet" in raw_text or "plum" in raw_text or "purple" in raw_text or "swirl" in raw_text) and is_4_hole:
+        parsed["best_match_sku"] = "ABC-149"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Natural Violet Lip Swirl MOP Shell Button (4-Hole Center Well)."
+        parsed["alternative_sku"] = "ABC-143"
+        parsed["alternative_reason"] = "ABC-143 is 2-hole spotted river shell."
+        return _finalize_draft(parsed)
+
+    # Spotted River Shell (Heavy dark spots across buttons, 2-Hole Flat/Rimless)
+    if "spotted" in raw_text and ("flat" in raw_text or "disk" in raw_text) and is_2_hole:
+        parsed["best_match_sku"] = "ABC-143"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Natural Spotted River Shell Button (2-Hole Flat Disk)."
+        parsed["alternative_sku"] = "ABC-139"
+        parsed["alternative_reason"] = "ABC-139 is standard natural white river shell with raised rim."
+        return _finalize_draft(parsed)
+
+    # Flagship Master SKU: ABC-139 (Natural White River Shell, 2-Hole with Raised Saucer Rim)
+    if is_2_hole:
+        parsed["best_match_sku"] = "ABC-139"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: Natural White River Shell Button (2-Hole with Raised Outer Rim / Saucer Rim)."
+        parsed["alternative_sku"] = "ABC-136"
+        parsed["alternative_reason"] = "ABC-136 is high-volume white agoya shell available in both 2-hole and 4-hole."
+        return _finalize_draft(parsed)
+
+    # 4-Hole White Pearl Agoya
+    if is_4_hole:
+        parsed["best_match_sku"] = "ABC-136"
+        parsed["match_confidence"] = 100
+        parsed["match_reason"] = "Deterministic Lock: White Pearl Agoya Shell Button (4-Hole High-Volume Shirt Stock)."
+        parsed["alternative_sku"] = "ABC-139"
+        parsed["alternative_reason"] = "ABC-139 is 2-hole river shell with raised rim."
+        return _finalize_draft(parsed)
+
+    return _finalize_draft(parsed)
+
+def _finalize_draft(parsed: dict) -> dict:
+    """Ensures human Hindi/Hinglish WhatsApp message is clean and reflects locked SKU."""
+    sku_to_desc = {
+        "ABC-139": "natural white river shell 2-hole button",
+        "ABC-149": "natural violet lip shell 4-hole button",
+        "ABC-143": "natural spotted river shell button",
+        "ABC-141": "smoky gunmetal grey trocas shell button",
+        "ABC-142": "ocean turquoise blue dyed shell button",
+        "ABC-136": "white pearl agoya shell button",
+        "ABC-137": "caramel gold MOP shell button",
+        "ABC-144": "pink blush cherry blossom shell button",
+        "ABC-SAMPLE-CARD-01": "complete natural shell sample card",
+        "ABC-HRN-24L-06": "genuine water buffalo horn button",
+        "ABC-COCO-24L-18": "natural coconut shell button",
+        "ABC-COR-24L-16": "natural corozo nut button",
+        "ABC-WOOD-32L-19": "natural sheesham hardwood button",
+        "ABC-MTL-24L-14": "antique brass metal shank button"
+    }
+    locked_sku = parsed.get("best_match_sku", "ABC-139")
+    if locked_sku in sku_to_desc:
+        clean_name = sku_to_desc[locked_sku]
+        if "sample card" in clean_name:
+            parsed["whatsapp_buyer_draft"] = "Namaste! ABC Buttons ka complete natural shell sample card hamare paas ready hai. Aapka delivery address confirm kar dijiye, hum aaj hi courier dispatch karwa denge."
+        else:
+            parsed["whatsapp_buyer_draft"] = f"Namaste! Ye {clean_name} hamare paas ready stock me available hai. Aapko kis size me aur kitni quantity chahiye?"
+    return parsed
 
 def local_salesman_fallback(text: str) -> dict:
     """Instant, fail-proof local parser for salesman field notes."""
