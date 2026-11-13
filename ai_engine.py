@@ -503,7 +503,23 @@ def analyze_button_or_fabric_image(image_bytes: bytes, user_query: str = ""):
 DO NOT match or consider background surface, background color (white, black, yellow, red cloth, table, fabric, paper, or polybag), or photography angle.
 Focus 100% on the PHYSICAL BUTTON ITSELF:
 
-1. HOLE COUNT & RIM GEOMETRY (Primary Geometric Filter):
+0. PRESENCE CHECK (IS THERE AN ACTUAL GARMENT BUTTON?):
+   - Set "detected_type": "Button" ONLY IF an actual garment button (or button sample card) is clearly visible in the image.
+   - If the image shows a room, bed, blanket, bedsheet, pillow, clothing without buttons, plain fabric swatch, human, or general background with NO buttons:
+     Set "detected_type": "Not a Button"
+     Set "best_match_sku": null
+     Set "match_confidence": 0
+     Set "match_reason": "No garment button detected in the photo."
+     Set "whatsapp_buyer_draft": "Namaste! Aapne jo photo share ki hai, usme button clear nahi dikh raha hai. Kripya button ki ek clear close-up photo bhejiye, hum turant verify karke ready stock batate hain."
+
+1. CATALOG MATCHING vs NON-CATALOG BUTTON:
+   - If an actual button is detected, but it is a material or design that ABC Buttons DOES NOT make/stock (e.g. crystal rhinestone, snap fastener, press stud, rubber/silicone button, toggle, zipper slider, or novelty plastic):
+     Set "best_match_sku": null
+     Set "match_confidence": 20
+     Set "match_reason": "Is type ka button ABC Buttons ke ready catalog me active nahi hai."
+     Set "whatsapp_buyer_draft": "Namaste! Ye specific button design abhi hamare ready catalog stock me available nahi hai. Hum apni management team se baat karke aapko update karte hain ki kya ye custom develop ho sakta hai."
+
+2. HOLE COUNT & RIM GEOMETRY (Primary Geometric Filter for Catalog Buttons):
    - 2-HOLE with RAISED OUTER RIM (Saucer rim / recessed center well) in natural white river shell:
      * SKU ABC-139 (Natural White River Shell Button, 2-Hole Raised Rim). Even if a few individual buttons show natural back shell markings or organic shell grain, any 2-hole natural white river shell button with a raised saucer rim MUST match SKU ABC-139!
    - 4-HOLE with RAISED RIM / CENTER WELL in natural shell:
@@ -583,15 +599,52 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
     (Holes, Rim, Material, Color) and locks the exact SKU deterministically,
     eliminating model hallucinations or background confusion.
     """
+    det_type = str(parsed.get("detected_type", "")).lower()
     va = parsed.get("visual_analysis", {})
     mat = str(va.get("material_detected", "")).lower()
     holes = str(va.get("holes_detected", "")).lower()
     finish = str(va.get("finish_detected", "")).lower()
     color = str(va.get("color_tone", "")).lower()
-    raw_text = f"{mat} {holes} {finish} {color}".lower()
+    size = str(va.get("estimated_size", "")).lower()
+    raw_text = f"{det_type} {mat} {holes} {finish} {color} {size}".lower()
     
-    # 1. Sample Card
+    # 0. CHECK IF NO BUTTON WAS DETECTED (Room, blanket, bedsheet, furniture, clothing without buttons)
+    non_button_indicators = [
+        "not a button", "no button", "blanket", "bed", "bedsheet", "pillow",
+        "furniture", "printed fabric and blanket", "curtain", "room",
+        "wall", "floor", "human", "face", "hand without", "not applicable"
+    ]
+    if (
+        "not a button" in det_type
+        or "no button" in det_type
+        or any(k in mat for k in ["blanket", "printed fabric", "bedsheet", "pillow"])
+        or ("not applicable" in size and "button" not in mat)
+        or ("button" not in det_type and "sample" not in det_type and "card" not in det_type and not any(m in raw_text for m in ["shell", "horn", "coco", "corozo", "wood", "metal", "mop"]))
+        or "no button" in holes
+    ):
+        parsed["is_button"] = False
+        parsed["match_status"] = "NO_BUTTON_DETECTED"
+        parsed["best_match_sku"] = None
+        parsed["match_confidence"] = 0
+        parsed["match_reason"] = "इस फोटो में कोई गारमेंट बटन नहीं दिख रहा है। कृपया कैमरे को सीधा बटन के पास ले जाकर उसकी साफ़ फोटो लें।"
+        parsed["whatsapp_buyer_draft"] = "Namaste! Aapne jo photo share ki hai, usme button clear nahi dikh raha hai. Kripya button ki ek clear close-up photo bhejiye, hum turant verify karke ready stock batate hain."
+        return parsed
+
+    parsed["is_button"] = True
+
+    # 1. NON-CATALOG / UNSUPPORTED BUTTON TYPES (Rhinestones, snap studs, toggles, rubber)
+    unsupported = ["rhinestone", "crystal", "snap fastener", "press stud", "tich button", "toggle", "zipper", "rubber", "silicone"]
+    if any(u in raw_text for u in unsupported):
+        parsed["match_status"] = "NOT_IN_CATALOG"
+        parsed["best_match_sku"] = None
+        parsed["match_confidence"] = 25
+        parsed["match_reason"] = "यह बटन डिज़ाइन वर्तमान में ABC Buttons के रेडी कैटलॉग में नहीं है।"
+        parsed["whatsapp_buyer_draft"] = "Namaste! Ye specific button design abhi hamare ready catalog stock me available nahi hai. Hum apni management team se baat karke aapko update karte hain ki kya ye custom develop ho sakta hai."
+        return parsed
+
+    # 2. Sample Card
     if "sample card" in raw_text or "hanger" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-SAMPLE-CARD-01"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Official ABC Buttons Master Sample Hanger Card."
@@ -599,8 +652,9 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         parsed["alternative_reason"] = "ABC-139 is the top featured natural river shell SKU on this sample card."
         return _finalize_draft(parsed)
         
-    # 2. Non-shell natural & metal materials
+    # 3. Non-shell natural & metal materials
     if "horn" in raw_text or "buffalo" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-HRN-24L-06"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Genuine Water Buffalo Horn Button with organic streaks and 4-hole beveled rim."
@@ -609,6 +663,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
         
     if "coconut" in raw_text or "coco" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-COCO-24L-18"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: 100% Natural Coconut Shell Button with organic fibrous flecks."
@@ -617,6 +672,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
         
     if "corozo" in raw_text or "tagua" in raw_text or "vegetable ivory" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-COR-24L-16"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Eco-friendly Corozo Nut (Tagua / Vegetable Ivory) with radial grain."
@@ -625,6 +681,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
 
     if "wood" in raw_text or "sheesham" in raw_text or "timber" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-WOOD-32L-19"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Natural Sheesham Hardwood Button with visible timber grain."
@@ -633,6 +690,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
 
     if "shank" in raw_text or "metal" in raw_text or "brass" in raw_text or "loop" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-MTL-24L-14"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Antique Brass Metal Shank Button with embossed crest and back loop."
@@ -641,6 +699,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
         
     if "kaudi" in raw_text or "cowrie" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         if "gold" in raw_text or "metallic" in raw_text or "electroplat" in raw_text:
             parsed["best_match_sku"] = "ABC-153"
             parsed["match_confidence"] = 100
@@ -656,6 +715,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
 
     if "polyester" in raw_text or "resin" in raw_text or "plastic" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         if "pearl" in raw_text:
             parsed["best_match_sku"] = "ABC-POLY-18L-10"
             parsed["match_confidence"] = 100
@@ -670,12 +730,13 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
             parsed["alternative_reason"] = "ABC-POLY-18L-10 is pearlized polyester."
         return _finalize_draft(parsed)
 
-    # 3. Shell / Mother of Pearl (MOP) Geometry Rules
+    # 4. Shell / Mother of Pearl (MOP) Geometry Rules
     is_4_hole = "4-hole" in holes or "4 hole" in holes or "four" in holes or "4-hole" in raw_text
-    is_2_hole = "2-hole" in holes or "2 hole" in holes or "two" in holes or not is_4_hole
+    is_2_hole = "2-hole" in holes or "2 hole" in holes or "two" in holes or "2" in holes or "2-hole" in raw_text
     
     # Dyed / Specific hues
     if "turquoise" in raw_text or "teal" in raw_text or "blue" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-142"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Ocean Turquoise & Teal Dyed MOP Shell Button (2-Hole)."
@@ -684,6 +745,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
         
     if "pink" in raw_text or "blush" in raw_text or "cherry" in raw_text or "coral" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-144"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Pink Blush Cherry Blossom MOP Shell Button (2-Hole)."
@@ -693,6 +755,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
 
     # Charcoal / Smoky / Gunmetal
     if "gunmetal" in raw_text or "smoky" in raw_text or "charcoal" in raw_text or "black lip" in raw_text or "dark grey" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         if is_4_hole:
             parsed["best_match_sku"] = "ABC-141"
             parsed["match_confidence"] = 100
@@ -709,6 +772,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
 
     # Caramel Gold / Bronze
     if "caramel" in raw_text or "amber" in raw_text or "champagne" in raw_text or "gold" in raw_text:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-137"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Caramel Gold MOP Shell Button (4-Hole Raised Rim)."
@@ -718,6 +782,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
 
     # Purple / Violet / Plum Lip Swirls (4-Hole)
     if ("violet" in raw_text or "plum" in raw_text or "purple" in raw_text or "swirl" in raw_text) and is_4_hole:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-149"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Natural Violet Lip Swirl MOP Shell Button (4-Hole Center Well)."
@@ -727,6 +792,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
 
     # Spotted River Shell (Heavy dark spots across buttons, 2-Hole Flat/Rimless)
     if "spotted" in raw_text and ("flat" in raw_text or "disk" in raw_text) and is_2_hole:
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-143"
         parsed["match_confidence"] = 100
         parsed["match_reason"] = "Deterministic Lock: Natural Spotted River Shell Button (2-Hole Flat Disk)."
@@ -735,24 +801,33 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         return _finalize_draft(parsed)
 
     # Flagship Master SKU: ABC-139 (Natural White River Shell, 2-Hole with Raised Saucer Rim)
-    if is_2_hole:
+    if is_2_hole and any(k in raw_text for k in ["shell", "mop", "river", "white", "pearl", "rim", "saucer"]):
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-139"
-        parsed["match_confidence"] = 100
+        parsed["match_confidence"] = 98
         parsed["match_reason"] = "Deterministic Lock: Natural White River Shell Button (2-Hole with Raised Outer Rim / Saucer Rim)."
         parsed["alternative_sku"] = "ABC-136"
         parsed["alternative_reason"] = "ABC-136 is high-volume white agoya shell available in both 2-hole and 4-hole."
         return _finalize_draft(parsed)
 
     # 4-Hole White Pearl Agoya
-    if is_4_hole:
+    if is_4_hole and any(k in raw_text for k in ["shell", "mop", "white", "pearl", "agoya"]):
+        parsed["match_status"] = "MATCH_FOUND"
         parsed["best_match_sku"] = "ABC-136"
-        parsed["match_confidence"] = 100
+        parsed["match_confidence"] = 98
         parsed["match_reason"] = "Deterministic Lock: White Pearl Agoya Shell Button (4-Hole High-Volume Shirt Stock)."
         parsed["alternative_sku"] = "ABC-139"
         parsed["alternative_reason"] = "ABC-139 is 2-hole river shell with raised rim."
         return _finalize_draft(parsed)
 
-    return _finalize_draft(parsed)
+    # IF NONE OF THE ABOVE MATCHED:
+    # A button is present, but not in ready catalog!
+    parsed["match_status"] = "NOT_IN_CATALOG"
+    parsed["best_match_sku"] = None
+    parsed["match_confidence"] = 25
+    parsed["match_reason"] = "इस टाइप का बटन हमारे रेडी कैटलॉग में एक्टिव नहीं है। हमारी मैनेजमेंट टीम से बात करके हम आपको बता देंगे।"
+    parsed["whatsapp_buyer_draft"] = "Namaste! Ye specific button design abhi hamare ready catalog stock me available nahi hai. Hum apni management team se baat karke aapko update karte hain ki kya ye custom develop ho sakta hai."
+    return parsed
 
 def _finalize_draft(parsed: dict) -> dict:
     """Ensures human Hindi/Hinglish WhatsApp message is clean and reflects locked SKU."""

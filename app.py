@@ -22,6 +22,10 @@ from ai_engine import (
     simulate_buyer_chat,
     simulate_salesman_chat
 )
+try:
+    from whatsapp_service import send_whatsapp_text
+except Exception:
+    send_whatsapp_text = None
 
 st.set_page_config(
     page_title="Button-Mitra AI | ABC Buttons Delhi",
@@ -463,11 +467,13 @@ with tabs[0]:
                     try:
                         res = analyze_button_or_fabric_image(selected_img_bytes, buyer_notes)
                         
-                        st.success("✅ Match Successfully Verified in ABC Buttons Catalog!")
+                        status = res.get("match_status", "MATCH_FOUND")
+                        is_btn = res.get("is_button", True)
+                        best_sku = res.get("best_match_sku")
                         
-                        mat_val = res.get("visual_analysis", {}).get("material_detected", "River Shell / MOP")
-                        size_val = res.get("visual_analysis", {}).get("estimated_size", "18L / 24L")
-                        conf_val = f"{res.get('match_confidence', 98)}%"
+                        mat_val = res.get("visual_analysis", {}).get("material_detected", "Garment Material")
+                        size_val = res.get("visual_analysis", {}).get("estimated_size", "N/A")
+                        conf_val = f"{res.get('match_confidence', 0)}%"
                         
                         st.markdown(f"""
                         <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
@@ -480,34 +486,52 @@ with tabs[0]:
                                 <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px;">{size_val}</div>
                             </div>
                             <div style="flex: 0.8; min-width: 90px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
-                                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Match Confidence</div>
-                                <div style="font-size: 16px; font-weight: 800; color: #16a34a; margin-top: 2px;">{conf_val}</div>
+                                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Match Status</div>
+                                <div style="font-size: 16px; font-weight: 800; color: {'#16a34a' if status == 'MATCH_FOUND' and best_sku else '#dc2626'}; margin-top: 2px;">
+                                    {'100% Verified' if status == 'MATCH_FOUND' and best_sku else ('No Button' if status == 'NO_BUTTON_DETECTED' else 'Custom Check')}
+                                </div>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        best_sku = res.get("best_match_sku", "ABC-139")
-                        matched_item = next((x for x in st.session_state.live_catalog if x["sku"] == best_sku), st.session_state.live_catalog[0])
-                        
-                        st.markdown("---")
-                        
-                        # Side by side visual verification
-                        col_cat_img, col_cat_details = st.columns([1, 2])
-                        with col_cat_img:
-                            match_img_path = os.path.join(IMG_DIR, f"{matched_item['sku']}.jpg")
-                            if os.path.exists(match_img_path):
-                                st.image(match_img_path, caption=f"Catalog Image ({matched_item['sku']})", use_container_width=True)
-                            else:
-                                st.info(f"🔘 Image: {matched_item['sku']}")
-                        with col_cat_details:
-                            st.markdown(f"### 🏆 Verified SKU: **{matched_item['name']}**")
-                            st.markdown(f"**Official SKU Code:** `{matched_item['sku']}` | **Category:** {matched_item['category']}")
-                            st.markdown(f"**Size:** {matched_item['size_ligne']} | **Holes:** {matched_item['holes']}")
-                            st.markdown(f"**B2B Rate:** :green[**₹{matched_item['rate_per_gross']} / Gross**] (1 Gross = 144 pcs)")
-                            st.markdown(f"**Available Ready Stock:** :blue[**{matched_item['stock_gross']:,} Gross**] ({matched_item['stock_gross']*144:,} Pieces)")
-                            st.markdown(f"**Best Recommended For:** *{matched_item['recommended_garment']}*")
+                        if status == "NO_BUTTON_DETECTED" or not is_btn:
+                            st.warning("⚠️ **इस फोटो में कोई बटन नहीं दिखा (No Garment Button Detected)**")
+                            st.info("💡 **मार्गदर्शन:** इस फोटो में कोई गारमेंट बटन नहीं दिख रहा है। कृपया कैमरे को सीधा बटन के पास ले जाएँ और अच्छी रोशनी में केवल बटन की साफ़ फोटो लें।")
                             
-                        st.caption(f"**AI Verification Logic:** {res.get('match_reason', 'Identical material finish, hole spacing, and rim texture.')}")
+                        elif status == "NOT_IN_CATALOG" or not best_sku:
+                            st.warning("🔍 **इस टाइप का बटन हमारे रेडी कैटलॉग में उपलब्ध नहीं है**")
+                            st.markdown(f"""
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 15px;">
+                                <h4 style="margin: 0 0 6px 0; color: #92400e;">⚠️ रेडी स्टॉक में नहीं मिला (Custom Inquiry)</h4>
+                                <p style="margin: 0; color: #78350f; font-size: 14px; line-height: 1.5;">
+                                    <b>पहचाना गया:</b> {mat_val} • {res.get('visual_analysis', {}).get('holes_detected', '')}<br>
+                                    यह विशिष्ट डिज़ाइन वर्तमान में हमारे स्टैंडर्ड रेडी स्टॉक में सक्रिय नहीं है। हम आपकी आवश्यकता अपनी <b>मैनेजमेंट और प्रोडक्शन टीम</b> से बात करके आपको बता देंगे कि क्या यह आपकी आवश्यक मात्रा के लिए विशेष रूप से तैयार किया जा सकता है।
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                        else:
+                            st.success("✅ Match Successfully Verified in ABC Buttons Catalog!")
+                            matched_item = next((x for x in st.session_state.live_catalog if x["sku"] == best_sku), st.session_state.live_catalog[0])
+                            
+                            st.markdown("---")
+                            # Side by side visual verification
+                            col_cat_img, col_cat_details = st.columns([1, 2])
+                            with col_cat_img:
+                                match_img_path = os.path.join(IMG_DIR, f"{matched_item['sku']}.jpg")
+                                if os.path.exists(match_img_path):
+                                    st.image(match_img_path, caption=f"Catalog Image ({matched_item['sku']})", use_container_width=True)
+                                else:
+                                    st.info(f"🔘 Image: {matched_item['sku']}")
+                            with col_cat_details:
+                                st.markdown(f"### 🏆 Verified SKU: **{matched_item['name']}**")
+                                st.markdown(f"**Official SKU Code:** `{matched_item['sku']}` | **Category:** {matched_item['category']}")
+                                st.markdown(f"**Size:** {matched_item['size_ligne']} | **Holes:** {matched_item['holes']}")
+                                st.markdown(f"**B2B Rate:** :green[**₹{matched_item['rate_per_gross']} / Gross**] (1 Gross = 144 pcs)")
+                                st.markdown(f"**Available Ready Stock:** :blue[**{matched_item['stock_gross']:,} Gross**] ({matched_item['stock_gross']*144:,} Pieces)")
+                                st.markdown(f"**Best Recommended For:** *{matched_item['recommended_garment']}*")
+                                
+                            st.caption(f"**AI Verification Logic:** {res.get('match_reason', 'Identical material finish, hole spacing, and rim texture.')}")
                         
                         st.markdown("#### 💬 Automated WhatsApp Message to Buyer (Sent in 3 Seconds):")
                         wa_msg = res.get("whatsapp_buyer_draft", "")
@@ -516,7 +540,19 @@ with tabs[0]:
                         encoded_wa = urllib.parse.quote(wa_msg)
                         c_wa1, c_wa2 = st.columns([1.2, 1])
                         with c_wa1:
-                            target_phone = st.text_input("Buyer WhatsApp Mobile # (Optional):", placeholder="+91 9811122334", key="tab1_wa_phone")
+                            target_phone = st.text_input("Buyer WhatsApp Mobile # (Optional):", placeholder="+91 93157 02804", key="tab1_wa_phone")
+                        with c_wa2:
+                            st.write("")
+                            st.write("")
+                            if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_api_tab1", help="Dispatches directly via Meta Official Cloud API"):
+                                p_num = clean_num if clean_num else "919315702804"
+                                with st.spinner(f"Dispatching to +{p_num}..."):
+                                    res_api = send_whatsapp_text(p_num, wa_msg)
+                                    if res_api.get("success"):
+                                        st.success(f"🚀 Delivered via Official Meta API to +{p_num}!")
+                                        st.balloons()
+                                    else:
+                                        st.error(f"API Error: {res_api.get('error')}")
                         
                         clean_num = "".join(ch for ch in target_phone if ch.isdigit())
                         wa_url = f"https://wa.me/{clean_num}?text={encoded_wa}" if clean_num else f"https://api.whatsapp.com/send?text={encoded_wa}"
@@ -528,10 +564,14 @@ with tabs[0]:
                             if st.button("📋 Copy Message", use_container_width=True):
                                 st.toast("WhatsApp Message copied to clipboard!")
                         with c_b3:
-                            if st.button("📄 Generate Quote (Tab 5)", use_container_width=True):
-                                st.session_state["quote_sku"] = matched_item["sku"]
-                                st.success(f"✅ SKU **{matched_item['sku']}** locked for Quotation! Open **Tab 5**.")
-                                st.toast(f"Locked {matched_item['sku']} for Tab 5 Quotation!")
+                            if status == "MATCH_FOUND" and best_sku:
+                                if st.button("📄 Generate Quote (Tab 5)", use_container_width=True):
+                                    st.session_state["quote_sku"] = matched_item["sku"]
+                                    st.success(f"✅ SKU **{matched_item['sku']}** locked for Quotation! Open **Tab 5**.")
+                                    st.toast(f"Locked {matched_item['sku']} for Tab 5 Quotation!")
+                            else:
+                                if st.button("🏍️ Log Custom Inquiry (Tab 3)", use_container_width=True):
+                                    st.toast("Custom inquiry noted for management check!")
                             
                     except Exception as e:
                         st.error(f"Analysis error: {str(e)}")
