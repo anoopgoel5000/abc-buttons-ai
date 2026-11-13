@@ -1,4 +1,5 @@
 import streamlit as st
+import datetime
 import json
 import os
 import pandas as pd
@@ -41,41 +42,48 @@ def generate_quotation_pdf(buyer_name, buyer_gst, item_sku, item_name, item_size
     total = taxable_subtotal + gst
     total_pcs = qty_gross * 144
 
+    today_obj = datetime.date.today()
+    today_str = today_obj.strftime("%d-%b-%Y")
+    valid_till_str = (today_obj + datetime.timedelta(days=30)).strftime("%d-%b-%Y")
+    ref_no = f"ABC-QT-{today_obj.strftime('%Y')}-{abs(hash(item_sku + buyer_name)) % 9000 + 1000}"
+
     if not HAS_REPORTLAB:
         text_content = f"""====================================================
                ABC BUTTONS PVT. LTD.
    Manufacturers & Exporters of Natural & Customized Buttons
    Works: Okhla Phase-II | Regd: Govindpuri / Kalkaji, New Delhi
-   GSTIN: 07AABCA1234F1Z8 | Contact: +91 9310722777
+   GSTIN: 07AABCA9876P1Z3 | Contact: +91 9310722777
 ====================================================
 PROFORMA QUOTATION
-Ref No: ABC-QT-2026-0892 | Date: 10-Nov-2026
+Ref No: {ref_no} | Date: {today_str} | Valid Till: {valid_till_str}
 
 BILL TO:
 Buyer: {buyer_name}
 GSTIN: {buyer_gst}
 Payment Terms: 30 Days Credit
-Delivery: 3-5 Working Days
+Delivery: 3-5 Working Days from Okhla Godown
 
 ----------------------------------------------------
 ITEM DETAILS:
 SKU: {item_sku} - {item_name}
 Size: {item_size}
 Quantity: {qty_gross} Gross ({total_pcs:,} Individual Pieces)
-Rate / Gross: Rs. {effective_rate:.2f}
+Base Rate / Gross: Rs. {rate_gross:.2f}
 Discount: {discount_pct}%
 
 ----------------------------------------------------
 COMMERCIAL SUMMARY:
-Subtotal:       Rs. {subtotal:,.2f}
-GST @ 12%:      Rs. {gst:,.2f}
-TOTAL PAYABLE:  Rs. {total:,.2f}
+Gross Total:      Rs. {gross_amount:,.2f}
+Discount ({discount_pct}%): Rs. -{discount_amount:,.2f}
+Taxable Subtotal: Rs. {taxable_subtotal:,.2f}
+GST @ 12%:        Rs. {gst:,.2f}
+TOTAL PAYABLE:    Rs. {total:,.2f}
 
 ----------------------------------------------------
 BANK DETAILS FOR RTGS / NEFT:
-A/C Name:   ABC Buttons Pvt. Ltd.
+A/C Name:   ABC Buttons Private Limited
 Bank Name:  HDFC Bank, Kalkaji Branch
-A/C Number: 50200012345678
+A/C Number: 50200084920192
 IFSC Code:  HDFC0000123
 ====================================================
 """
@@ -90,13 +98,13 @@ IFSC Code:  HDFC0000123
     sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor('#475569'))
     
     story.append(Paragraph('ABC BUTTONS PVT. LTD.', title_style))
-    story.append(Paragraph('Manufacturers & Exporters of Natural & Customized Buttons<br/>Works: Okhla Industrial Area Phase-II | Regd Office: Govindpuri / Kalkaji, New Delhi - 110019<br/>GSTIN: 07AABCA1234F1Z8 | Phone: +91 9310722777 | Email: sales@abcbuttons.com', sub_style))
+    story.append(Paragraph('Manufacturers & Exporters of Natural & Customized Buttons<br/>Works: Okhla Industrial Area Phase-II | Regd Office: Govindpuri / Kalkaji, New Delhi - 110019<br/>GSTIN: 07AABCA9876P1Z3 | Phone: +91 9310722777 | Email: sales@abcbuttons.com', sub_style))
     story.append(Spacer(1, 8))
     story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#2563eb'), spaceAfter=12))
 
     meta_data = [
         [
-            Paragraph('<b>PROFORMA QUOTATION</b><br/><font size=8.5 color=#64748b>Ref No: ABC-QT-2026-0892<br/>Date: 10-Nov-2026<br/>Valid Till: 30-Nov-2026</font>', styles['Normal']),
+            Paragraph(f'<b>PROFORMA QUOTATION</b><br/><font size=8.5 color=#64748b>Ref No: {ref_no}<br/>Date: {today_str}<br/>Valid Till: {valid_till_str}</font>', styles['Normal']),
             Paragraph(f'<b>BILL TO:</b><br/><b>{buyer_name}</b><br/><font size=8.5 color=#64748b>GSTIN: {buyer_gst}<br/>Payment: 30 Days Credit<br/>Delivery: 3-5 Working Days</font>', styles['Normal'])
         ]
     ]
@@ -172,7 +180,7 @@ IFSC Code:  HDFC0000123
 
     footer_data = [
         [
-            Paragraph('<b>Bank Details for RTGS / NEFT:</b><br/><font size=8.5 color=#475569>Account Name: ABC Buttons Pvt. Ltd.<br/>Bank Name: HDFC Bank, Kalkaji Branch<br/>A/C Number: 50200012345678 | IFSC: HDFC0000123</font>', styles['Normal']),
+            Paragraph('<b>Bank Details for RTGS / NEFT:</b><br/><font size=8.5 color=#475569>Account Name: ABC Buttons Pvt. Ltd.<br/>Bank Name: HDFC Bank, Kalkaji Branch<br/>A/C Number: 50200084920192 | IFSC: HDFC0000123</font>', styles['Normal']),
             Paragraph('<b>For ABC BUTTONS PVT. LTD.</b><br/><br/><br/><i>Authorized Signatory</i><br/><font size=8 color=#64748b>(Computer-generated quotation)</font>', styles['Normal'])
         ]
     ]
@@ -421,7 +429,8 @@ with tabs[0]:
                             st.toast("WhatsApp Message copied to clipboard!")
                         if c_b2.button("📄 Generate Proforma Quotation for this SKU"):
                             st.session_state["quote_sku"] = matched_item["sku"]
-                            st.toast(f"Selected {matched_item['sku']} for Tab 5 Quotation!")
+                            st.success(f"✅ SKU **{matched_item['sku']}** locked for Quotation! Open **Tab 5 (🧾 1-Click Quotation)** to download PDF.")
+                            st.toast(f"Locked {matched_item['sku']} for Tab 5 Quotation!")
                             
                     except Exception as e:
                         st.error(f"Analysis error: {str(e)}")
@@ -689,7 +698,7 @@ with tabs[3]:
             if is_order_won:
                 st.success(f"🎉 **Order Confirmed & Won ({item['bulk_est']})!** Sample trial completed. Follow-up automated reminders are STOPPED.")
             else:
-                c1, c2, c3 = st.columns([2, 1, 1])
+                c1, c2, c3, c4 = st.columns([2.2, 0.9, 0.9, 1.0])
                 with c1:
                     custom_msg = item.get("followup_msg")
                     if not custom_msg:
@@ -697,9 +706,12 @@ with tabs[3]:
                         custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
                     st.caption(f"Suggested Follow-Up (AI 100% Human Draft): *\"{custom_msg}\"*")
                 with c2:
-                    if st.button(f"📲 Send WhatsApp Follow-up", key=f"btn_wa_{item['id']}"):
+                    if st.button(f"📲 Send", key=f"btn_wa_{item['id']}"):
                         st.toast(f"WhatsApp follow-up dispatched to {item['contact']}!")
                 with c3:
+                    if st.button(f"📋 Copy", key=f"btn_cp_{item['id']}"):
+                        st.toast(f"Copied follow-up for {item['contact']}!")
+                with c4:
                     if st.button(f"✅ Convert to Order", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
                         item['status'] = "🎉 Order Won (Bulk Dispatch)"
                         st.toast(f"🎉 Fantastic! Order confirmed for {item['company']}. Follow-ups stopped.")
@@ -798,7 +810,7 @@ with tabs[4]:
             <p style="font-size: 13px; color: #475569; margin-bottom: 12px;">
                 <b>Bill To:</b> {q_buyer}<br>
                 <b>GSTIN:</b> {q_gst}<br>
-                <b>Date:</b> 13-Nov-2026 | <b>Valid Till:</b> 30 Days
+                <b>Date:</b> 13-Nov-2026 | <b>Valid Till:</b> 13-Dec-2026
             </p>
             <table style="width: 100%; font-size: 13px; border-collapse: collapse; margin-bottom: 15px;">
                 <tr style="background: #1e293b; color: #ffffff; font-weight: 700;">
@@ -826,7 +838,7 @@ with tabs[4]:
                 • All billing strictly in Gross units (1 Gross = 144 Pieces)<br>
                 • Delivery Lead Time: 3-5 Working Days from Okhla Godown<br>
                 • Payment Terms: 30 Days Credit against Approved Purchase Order<br>
-                • Bank: HDFC Bank, Kalkaji Branch, A/C: 50200012345678, IFSC: HDFC0000123
+                • Bank: HDFC Bank, Kalkaji Branch, A/C: 50200084920192, IFSC: HDFC0000123
             </small>
         </div>
         """, unsafe_allow_html=True)
@@ -870,9 +882,26 @@ with tabs[5]:
         ])
         
         buyer_clean_name = p_buyer.split(" (")[0]
-        invoice_num = "INV-2026-0894"
-        amt = 84500 if "Shahi" in p_buyer else (46200 if "Richa" in p_buyer else 125000)
-        days = 12 if "Shahi" in p_buyer else (5 if "Richa" in p_buyer else 18)
+        if "Shahi" in p_buyer:
+            invoice_num = "INV-2026-0894"
+            amt = 84500
+            days = 12
+        elif "Richa" in p_buyer:
+            invoice_num = "INV-2026-0912"
+            amt = 46200
+            days = 5
+        else:
+            invoice_num = "INV-2026-0785"
+            amt = 125000
+            days = 18
+        
+        st.markdown(f"""
+        <div style="background: #f1f5f9; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 10px;">
+            📄 <b>Invoice Number:</b> <code>{invoice_num}</code><br>
+            💰 <b>Pending Amount:</b> ₹{amt:,.2f}<br>
+            ⏱️ <b>Overdue Days:</b> {days} Days Overdue
+        </div>
+        """, unsafe_allow_html=True)
         
         if st.button("✨ Draft Polite AI Payment Reminder", type="primary"):
             with st.spinner("AI composing relationship-preserving polite reminder..."):
@@ -883,9 +912,14 @@ with tabs[5]:
         if "generated_reminder" in st.session_state:
             st.markdown("### 💬 Generated WhatsApp Message:")
             st.text_area("Ready-to-Send Message:", value=st.session_state["generated_reminder"], height=160)
-            if st.button("📲 Send Reminder via ABC Buttons WhatsApp"):
-                st.toast(f"Payment reminder sent to {buyer_clean_name}!")
-                st.balloons()
+            c_rm1, c_rm2 = st.columns(2)
+            with c_rm1:
+                if st.button("📲 Send via WhatsApp", use_container_width=True):
+                    st.toast(f"Payment reminder sent to {buyer_clean_name}!")
+                    st.balloons()
+            with c_rm2:
+                if st.button("📋 Copy Message", use_container_width=True):
+                    st.toast("Payment reminder message copied to clipboard!")
 
 # ----------------- TAB 8: WHATSAPP LIVE SIMULATOR -----------------
 with tabs[6]:
