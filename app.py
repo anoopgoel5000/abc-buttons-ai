@@ -34,10 +34,11 @@ except Exception:
     HAS_REPORTLAB = False
 
 def generate_quotation_pdf(buyer_name, buyer_gst, item_sku, item_name, item_size, qty_gross, rate_gross, discount_pct=0):
-    effective_rate = rate_gross * (1 - discount_pct/100.0)
-    subtotal = qty_gross * effective_rate
-    gst = subtotal * 0.12
-    total = subtotal + gst
+    gross_amount = qty_gross * rate_gross
+    discount_amount = gross_amount * (discount_pct / 100.0)
+    taxable_subtotal = gross_amount - discount_amount
+    gst = taxable_subtotal * 0.12
+    total = taxable_subtotal + gst
     total_pcs = qty_gross * 144
 
     if not HAS_REPORTLAB:
@@ -120,8 +121,8 @@ IFSC Code:  HDFC0000123
         Paragraph(f'<b>{item_sku}</b> - {item_name}<br/><font size=8 color=#64748b>Size: {item_size} | 100% Export Ready Quality</font>', styles['Normal']),
         f'{qty_gross} Gr',
         f'{total_pcs:,} pcs',
-        f'Rs. {effective_rate:.2f}',
-        f'Rs. {subtotal:,.2f}'
+        f'Rs. {rate_gross:.2f}',
+        f'Rs. {gross_amount:,.2f}'
     ]
     t_items = Table([headers, row], colWidths=[240, 75, 75, 75, 75])
     t_items.setStyle(TableStyle([
@@ -138,12 +139,20 @@ IFSC Code:  HDFC0000123
     story.append(t_items)
     story.append(Spacer(1, 8))
 
-    summary_data = [
-        ['', 'Subtotal:', f'Rs. {subtotal:,.2f}'],
-        ['', f'Discount ({discount_pct}%):', f'Rs. -{(qty_gross*rate_gross*discount_pct/100):,.2f}'],
-        ['', 'GST @ 12%:', f'Rs. {gst:,.2f}'],
-        ['', 'Total Payable:', f'Rs. {total:,.2f}']
-    ]
+    if discount_pct > 0:
+        summary_data = [
+            ['', 'Gross Amount:', f'Rs. {gross_amount:,.2f}'],
+            ['', f'Less: Volume Discount ({discount_pct}%):', f'- Rs. {discount_amount:,.2f}'],
+            ['', 'Taxable Subtotal:', f'Rs. {taxable_subtotal:,.2f}'],
+            ['', 'GST @ 12%:', f'Rs. {gst:,.2f}'],
+            ['', 'Total Payable:', f'Rs. {total:,.2f}']
+        ]
+    else:
+        summary_data = [
+            ['', 'Taxable Subtotal:', f'Rs. {taxable_subtotal:,.2f}'],
+            ['', 'GST @ 12%:', f'Rs. {gst:,.2f}'],
+            ['', 'Total Payable:', f'Rs. {total:,.2f}']
+        ]
     t_sum = Table(summary_data, colWidths=[280, 130, 130])
     t_sum.setStyle(TableStyle([
         ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
@@ -697,35 +706,79 @@ with tabs[4]:
     st.subheader("🧾 1-Click Proforma Quotation Generator (Pricing in Gross)")
     st.caption("बायर को 30 सेकंड में प्रोफेशनल कोटेशन (दरें व क्वांटिटी अनिवार्य रूप से ग्रॉस में) तैयार करके भेजें।")
     
+    # 1. Source Inquiry Selector (Connects Tab 3 & Tab 1 to Tab 5)
+    inquiry_sources = []
+    if "last_parsed_sample" in st.session_state:
+        p_last = st.session_state["last_parsed_sample"]
+        c_name = p_last.get("company_name", "Buyer")
+        b_desc = ", ".join(p_last.get("button_sku_or_description", [])) if isinstance(p_last.get("button_sku_or_description"), list) else p_last.get("button_sku_or_description", "Buttons")
+        b_est = p_last.get("bulk_requirement_estimate", "Order")
+        inquiry_sources.append(f"🏍️ Latest Salesman Inquiry: {c_name} ({b_desc} - {b_est})")
+    
+    if "quote_sku" in st.session_state:
+        inquiry_sources.append(f"🔍 Visual Matcher Inquiry: SKU {st.session_state['quote_sku']}")
+        
+    inquiry_sources.append("✏️ Custom / Manual Quotation (Enter / Edit Any Details)")
+    
+    selected_source = st.radio("📋 Auto-Fill Quotation from Inquiry Source:", inquiry_sources, horizontal=True)
+    
+    # Determine defaults based on inquiry selection
+    default_buyer = "Shahi Exports Private Limited"
+    default_gst = "07AAACS1234F1Z5"
+    default_sku_code = "ABC-139" if any("139" in x["sku"] for x in st.session_state.live_catalog) else st.session_state.live_catalog[0]["sku"]
+    default_gross = 350
+    
+    if selected_source.startswith("🏍️") and "last_parsed_sample" in st.session_state:
+        p_last = st.session_state["last_parsed_sample"]
+        default_buyer = p_last.get("company_name") or default_buyer
+        b_text = str(p_last.get("button_sku_or_description", "")).lower()
+        for it in st.session_state.live_catalog:
+            if it["sku"].lower() in b_text or any(w in it["name"].lower() for w in ["white shell", "river shell", "agoya", "trocas"] if w in b_text):
+                default_sku_code = it["sku"]
+                break
+        q_text = str(p_last.get("bulk_requirement_estimate", ""))
+        import re
+        m_q = re.search(r'(\d+)', q_text)
+        if m_q:
+            default_gross = int(m_q.group(1))
+    elif selected_source.startswith("🔍") and "quote_sku" in st.session_state:
+        default_sku_code = st.session_state["quote_sku"]
+        default_gross = 100
+        
+    st.markdown("---")
+    
     q_col1, q_col2 = st.columns([1, 1])
     
     with q_col1:
-        q_buyer = st.text_input("Buyer Company Name:", value="Shahi Exports Private Limited")
-        q_gst = st.text_input("Buyer GSTIN:", value="07AAACS1234F1Z5")
+        q_buyer = st.text_input("Buyer Company Name:", value=default_buyer)
+        q_gst = st.text_input("Buyer GSTIN:", value=default_gst)
         
         sku_options = [x["sku"] + " - " + x["name"] for x in st.session_state.live_catalog]
         default_index = 0
-        if "quote_sku" in st.session_state:
-            for idx, opt in enumerate(sku_options):
-                if st.session_state["quote_sku"] in opt:
-                    default_index = idx
-                    break
+        for idx, opt in enumerate(sku_options):
+            if default_sku_code in opt:
+                default_index = idx
+                break
                     
         selected_sku_text = st.selectbox("Select Button SKU:", sku_options, index=default_index)
         selected_sku = selected_sku_text.split(" - ")[0]
         curr_item = next(x for x in st.session_state.live_catalog if x["sku"] == selected_sku)
         
-        q_gross_qty = st.number_input("Order Quantity in GROSS (1 Gross = 144 Pcs):", min_value=5, max_value=5000, value=250, step=5)
+        q_gross_qty = st.number_input("Order Quantity in GROSS (1 Gross = 144 Pcs):", min_value=5, max_value=10000, value=default_gross, step=5)
         st.markdown(f"<span class='gross-badge'>= {q_gross_qty} Gross ({q_gross_qty * 144:,} Total Individual Pieces)</span>", unsafe_allow_html=True)
         
         q_discount = st.slider("Volume Discount (%):", min_value=0, max_value=25, value=5)
         
     with q_col2:
         base_rate = curr_item["rate_per_gross"]
-        discounted_rate = base_rate * (1 - (q_discount / 100))
-        subtotal = discounted_rate * q_gross_qty
-        gst_amount = subtotal * 0.12
-        grand_total = subtotal + gst_amount
+        gross_amount = base_rate * q_gross_qty
+        discount_amount = gross_amount * (q_discount / 100.0)
+        taxable_subtotal = gross_amount - discount_amount
+        gst_amount = taxable_subtotal * 0.12
+        grand_total = taxable_subtotal + gst_amount
+        effective_rate = taxable_subtotal / q_gross_qty if q_gross_qty > 0 else base_rate
+        
+        discount_html = f"""<p style="margin: 4px 0; color: #16a34a; font-size: 13.5px;"><b>Less: Volume Discount ({q_discount}%):</b> <span style="font-weight: 700;">- ₹{discount_amount:,.2f}</span></p>""" if q_discount > 0 else ""
         
         st.markdown(f"""
         <div style="background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 12px; padding: 20px;">
@@ -733,35 +786,40 @@ with tabs[4]:
                 <h3 style="margin: 0; color: #0f172a;">ABC BUTTONS PRIVATE LIMITED</h3>
                 <small style="color: #64748b;">Govindpuri / Kalkaji, New Delhi - 110019 | GSTIN: 07AABCA9876P1Z3</small>
             </div>
-            <p><b>PROFORMA QUOTATION / RATE ESTIMATE</b></p>
-            <p style="font-size: 13px; color: #475569;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 700; color: #1e293b;">PROFORMA QUOTATION / RATE ESTIMATE</span>
+                <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">Ref: ABC-QT-2026</span>
+            </div>
+            <p style="font-size: 13px; color: #475569; margin-bottom: 12px;">
                 <b>Bill To:</b> {q_buyer}<br>
                 <b>GSTIN:</b> {q_gst}<br>
-                <b>Date:</b> 08-Nov-2026
+                <b>Date:</b> 13-Nov-2026 | <b>Valid Till:</b> 30 Days
             </p>
             <table style="width: 100%; font-size: 13px; border-collapse: collapse; margin-bottom: 15px;">
-                <tr style="background: #e2e8f0; font-weight: 700;">
-                    <td style="padding: 6px;">Item Description</td>
-                    <td style="padding: 6px; text-align: center;">Qty (Gross)</td>
-                    <td style="padding: 6px; text-align: right;">Rate / Gross</td>
-                    <td style="padding: 6px; text-align: right;">Amount (INR)</td>
+                <tr style="background: #1e293b; color: #ffffff; font-weight: 700;">
+                    <td style="padding: 8px;">Item Description</td>
+                    <td style="padding: 8px; text-align: center;">Qty (Gross)</td>
+                    <td style="padding: 8px; text-align: right;">Base Rate / Gr</td>
+                    <td style="padding: 8px; text-align: right;">Gross Amount</td>
                 </tr>
-                <tr>
-                    <td style="padding: 6px;"><b>{curr_item['name']}</b><br><small>{curr_item['size_ligne']} • {curr_item['holes']}</small></td>
-                    <td style="padding: 6px; text-align: center; font-weight: 700;">{q_gross_qty} Gr<br><small>({q_gross_qty*144:,} pcs)</small></td>
-                    <td style="padding: 6px; text-align: right;">₹{discounted_rate:.2f} / Gr</td>
-                    <td style="padding: 6px; text-align: right; font-weight: 700;">₹{subtotal:,.2f}</td>
+                <tr style="border-bottom: 1px solid #cbd5e1; background: #ffffff;">
+                    <td style="padding: 8px;"><b>{curr_item['name']}</b><br><small style="color: #64748b;">SKU: {curr_item['sku']} • Size: {curr_item.get('size_ligne', '')} • {curr_item.get('holes', '')}</small></td>
+                    <td style="padding: 8px; text-align: center; font-weight: 700;">{q_gross_qty} Gr<br><small style="color: #64748b;">({q_gross_qty*144:,} pcs)</small></td>
+                    <td style="padding: 8px; text-align: right;">₹{base_rate:.2f} / Gr</td>
+                    <td style="padding: 8px; text-align: right; font-weight: 700;">₹{gross_amount:,.2f}</td>
                 </tr>
             </table>
-            <div style="text-align: right; font-size: 13px;">
-                <p style="margin: 4px 0;">Subtotal: <b>₹{subtotal:,.2f}</b></p>
-                <p style="margin: 4px 0;">GST @ 12%: <b>₹{gst_amount:,.2f}</b></p>
-                <h4 style="margin: 8px 0; color: #0f172a; font-size: 17px;">Total Payable: ₹{grand_total:,.2f}</h4>
+            <div style="text-align: right; font-size: 13.5px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                <p style="margin: 4px 0; color: #475569;">Gross Total: <b>₹{gross_amount:,.2f}</b></p>
+                {discount_html}
+                <p style="margin: 4px 0; color: #0f172a; border-top: 1px dashed #cbd5e1; padding-top: 4px;">Taxable Subtotal: <b>₹{taxable_subtotal:,.2f}</b> {f'<small style="color: #16a34a; font-weight: 600;">(Effective Net: ₹{effective_rate:.2f}/Gr)</small>' if q_discount > 0 else ''}</p>
+                <p style="margin: 4px 0; color: #475569;">GST @ 12%: <b>₹{gst_amount:,.2f}</b></p>
+                <h4 style="margin: 8px 0 0 0; color: #0f172a; font-size: 18px; border-top: 2px solid #0f172a; padding-top: 6px;">Total Payable: ₹{grand_total:,.2f}</h4>
             </div>
             <hr style="margin: 12px 0;">
             <small style="color: #64748b;">
                 • All billing strictly in Gross units (1 Gross = 144 Pieces)<br>
-                • Delivery Lead Time: 3-5 Working Days<br>
+                • Delivery Lead Time: 3-5 Working Days from Okhla Godown<br>
                 • Payment Terms: 30 Days Credit against Approved Purchase Order<br>
                 • Bank: HDFC Bank, Kalkaji Branch, A/C: 50200012345678, IFSC: HDFC0000123
             </small>
