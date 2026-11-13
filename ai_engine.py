@@ -452,9 +452,9 @@ def analyze_button_or_fabric_image(image_bytes: bytes, user_query: str = ""):
     
     visual_matching_guidelines = """
 ### CRITICAL VISUAL IDENTIFICATION RULES:
-1. Raised Rim vs Flat Disk Construction (THE MOST IMPORTANT RULE):
-   - SKU ABC-139: Features a distinct RAISED OUTER RIM (saucer rim / recessed center well) around the circumference, with 2 holes in the recessed center. Any 2-hole natural river shell button with a raised outer rim is ALWAYS SKU ABC-139 (Natural River Shell Button, 2-Hole Raised Rim), regardless of background (white background, red satin cloth, table, or fabric) and even if individual buttons show natural shell spots or back markings.
-   - SKU ABC-143: Flat disk button with NO raised rim (completely flat surface, rimless, flat edge). Loose bulk pile on yellow wooden surface.
+1. Visual Recognition & Hole Count Rules:
+   - SKU ABC-139: Natural White River Shell Button with 2 HOLES and distinct raised outer rim border (saucer rim / recessed center). Pure white natural shell luster without dark spotted clusters.
+   - SKU ABC-143: Natural Spotted River Shell Button featuring distinct organic dark smoky, plum, and brown mottled spots / markings. Standard 4-HOLE (and 2-hole) with raised rim border, photographed in loose bulk pile on yellow/neutral surface.
    - SKU ABC-136: White Pearl Agoya Shell button photographed in factory bulk heap or polybag.
    - SKU ABC-142: Vibrant Ocean Turquoise / Teal Dyed MOP Shell Button (2-Hole).
    - SKU ABC-141: Smoky Gunmetal Trocas Shell Button (4-Hole Rim).

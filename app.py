@@ -465,10 +465,26 @@ with tabs[0]:
                         
                         st.success("✅ Match Successfully Verified in ABC Buttons Catalog!")
                         
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("Detected Material", res.get("visual_analysis", {}).get("material_detected", "Shell / MOP"))
-                        m2.metric("Ligne Size", res.get("visual_analysis", {}).get("estimated_size", "24L"))
-                        m3.metric("Match Confidence", f"{res.get('match_confidence', 98)}%")
+                        mat_val = res.get("visual_analysis", {}).get("material_detected", "River Shell / MOP")
+                        size_val = res.get("visual_analysis", {}).get("estimated_size", "18L / 24L")
+                        conf_val = f"{res.get('match_confidence', 98)}%"
+                        
+                        st.markdown(f"""
+                        <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+                            <div style="flex: 1.3; min-width: 140px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Detected Material</div>
+                                <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px;">{mat_val}</div>
+                            </div>
+                            <div style="flex: 1.1; min-width: 120px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Ligne Size</div>
+                                <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px;">{size_val}</div>
+                            </div>
+                            <div style="flex: 0.8; min-width: 90px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Match Confidence</div>
+                                <div style="font-size: 16px; font-weight: 800; color: #16a34a; margin-top: 2px;">{conf_val}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                         
                         best_sku = res.get("best_match_sku", "ABC-139")
                         matched_item = next((x for x in st.session_state.live_catalog if x["sku"] == best_sku), st.session_state.live_catalog[0])
