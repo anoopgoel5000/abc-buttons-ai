@@ -369,6 +369,25 @@ def generate_proforma_card_image(
     buf.seek(0)
     return buf.getvalue()
 
+def download_whatsapp_media(media_id: str) -> bytes:
+    """
+    Downloads media bytes from Meta WhatsApp Cloud API given a media_id.
+    """
+    url_info = f"https://graph.facebook.com/v22.0/{media_id}"
+    req1 = urllib.request.Request(url_info, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"})
+    with urllib.request.urlopen(req1, timeout=15) as resp1:
+        info = json.loads(resp1.read().decode("utf-8"))
+        media_url = info.get("url")
+        if not media_url:
+            raise Exception(f"No media URL returned by Meta for media_id {media_id}")
+
+    req2 = urllib.request.Request(media_url, headers={
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "User-Agent": "curl/7.68.0"
+    })
+    with urllib.request.urlopen(req2, timeout=25) as resp2:
+        return resp2.read()
+
 def send_whatsapp_template(to_phone: str, template_name: str = "hello_world", lang_code: str = "en_US") -> dict:
     """
     Sends an approved Meta WhatsApp template to open a 24-hr customer service window.
