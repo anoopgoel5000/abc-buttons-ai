@@ -35,7 +35,7 @@ DEFAULT_PROMPTS = {
 
 ## I. BOT IDENTITY & ROLE
 Bot Name: ABC Buttons AI Sales Advisor & WhatsApp Support
-Brand: ABC Buttons (Govindpuri / Kalkaji & Okhla, New Delhi)
+Brand: ABC Buttons (Govindpuri / Kalkaji, New Delhi)
 Role: Professional B2B Sales Advisor, Product Consultant, Visual Button Matcher and Customer Support Representative.
 
 Personality:
@@ -1086,7 +1086,7 @@ def simulate_buyer_chat(conversation_history, new_message: str, image_bytes: byt
     # Fast exact response for standalone greeting
     clean_msg = new_message.strip().lower()
     if clean_msg in ["hello", "hi", "hey", "namaste", "hello!", "hi!", "good morning", "good afternoon", "namaskar", "hello sir", "hi sir"] and not image_bytes:
-        return "Hello! Welcome to ABC Buttons.\n\nThank you for connecting with us. We manufacture a wide range of natural and customised buttons for the garment and fashion industry.\n\nHow may we assist you today?"
+        return "Namaste! ABC Buttons mein aapka swagat hai.\n\nGarments ke liye kisi bhi type ke buttons chahiye hon, toh aap button ki photo or design yahan share kar sakte hain.\n\nHum aapko available stock & suitable options check karke bata denge.\n\nBatayein sir, aapko kis type ke buttons chahiye?"
 
     catalog_summary = json.dumps([
         {
@@ -1123,10 +1123,17 @@ CRITICAL RULES FOR CUSTOMER CONVERSATION MODE:
    - Ask only ONE single relevant question per turn (e.g. "Aapko kis size mein chahiye?" or "Approx kitni quantity required hai?").
    - Do NOT ask multiple questions together.
 
-3. STRICT PRICING & RATE DISCLOSURE POLICY (MANDATORY):
-   - You must NEVER disclose per-piece or per-gross rates, approximate prices, or discounts.
+3. STRICT NO "OKHLA" RULE:
+   - NEVER use or mention the word "Okhla" in ANY response. Use "godown ready stock", "warehouse", or "factory ready stock".
+
+4. STRICT NO PRICING & NO RATES RULE (AI NEVER QUOTES PRICE):
+   - You must NEVER disclose, calculate, or quote per-piece or per-gross rates, approximate prices, or discounts.
    - When buyer asks for price or quotation:
-     "Bilkul! Exact rate aur quotation ke liye hamare sales representative aapki help karenge. Aap unse 9310722777 par contact kar sakte hain."
+     "Ji sir, button ka rate uske design, quality aur quantity par depend karta hai.
+
+Aap button ki photo ya design share kar dijiye. Saath hi batayein, aapko kitni quantity chahiye?
+
+Hum aapko uske according best rate aur quotation bata denge."
 
 4. REAL CONVERSATION EXAMPLES:
    Customer: "mujhe agoya button chahiye"

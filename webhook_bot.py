@@ -145,8 +145,8 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"🏆 *100% Matching Stock: {matched_item['name']}*\n"
                     f"• Size: {matched_item.get('size_ligne', '')} • {matched_item.get('holes', '')}\n"
                     f"• Ready Godown Stock: *{matched_item.get('stock_gross', 0):,} Gross* ({matched_item.get('stock_gross', 0)*144:,} Pcs)\n"
-                    f"• B2B Rate: ₹{matched_item.get('rate_per_gross', 0)} / Gross (1 Gross = 144 Pcs)\n\n"
-                    f"Same quality aur export finish Okhla godown me ready mil jayegi."
+                    f"• Stock Status: Available in Godown\n\n"
+                    f"Same quality aur premium export finish ready mil jayegi."
                 )
                 img1_res = send_whatsapp_image(from_phone, p_img_bytes, best_caption)
                 print(f"📤 Sent Best Match Image ({matched_item['sku']}): {img1_res.get('success')}")
@@ -163,7 +163,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
                         f"🔘 *Option {idx}: {alt_item['name']}*\n"
                         f"• Size: {alt_item.get('size_ligne', '')} • {alt_item.get('holes', '')}\n"
                         f"• Ready Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
-                        f"• Rate: ₹{alt_item.get('rate_per_gross', 0)} / Gross"
+                        f"• Stock Status: Ready Godown Stock"
                     )
                     alt_res = send_whatsapp_image(from_phone, alt_bytes, alt_caption)
                     print(f"📤 Sent Option {idx} Image ({alt_item['sku']}): {alt_res.get('success')}")
@@ -172,7 +172,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
             # Message 5: Closing CTA
             cta_res = send_whatsapp_text(
                 from_phone,
-                f"Inme se aapko kaun sa design sahi baith raha hai sir? Aur approx kitne Gross ki requirement hai, batayein toh best bulk rate confirm karwa dete hain."
+                f"Inme se aapko kaun sa design sahi baith raha hai sir? Aur approx kitne Gross ki requirement hai, batayein toh quotation aur sample confirm karwa dete hain."
             )
             print(f"📤 Sent Closing CTA: {cta_res.get('success')}")
             
@@ -230,43 +230,15 @@ async def process_incoming_whatsapp_message(value_data: dict):
                 qty_gross = 200  # standard B2B sample production batch
 
             item = get_item_by_sku(target_sku) or SAMPLE_CATALOG[0]
-            rate = item.get("rate_per_gross", 290.0)
-            discount = 5.0 if qty_gross >= 200 else 0.0
-            gross_val = qty_gross * rate
-            disc_val = gross_val * (discount / 100.0)
-            taxable = gross_val - disc_val
-            gst = taxable * 0.12
-            total = taxable + gst
+            print(f"📦 Order Requirement for {from_phone}: SKU={target_sku} | Qty={qty_gross} Gross")
 
-            print(f"🧾 Generating Automated Proforma Invoice for {from_phone}: SKU={target_sku} | Qty={qty_gross} Gross | Total=₹{total:,.2f}")
-
-            # Generate High-Res Invoice Card Image
-            img_bytes = generate_proforma_card_image(
-                buyer_name=contact_name,
-                buyer_gst="07AAAAA0000A1Z5",
-                sku=target_sku,
-                item_name=item["name"],
-                item_spec=f"SKU: {target_sku} • Size: {item.get('size_ligne', '')} • {item.get('holes', '')}",
-                qty_gross=qty_gross,
-                rate_gross=rate,
-                discount_pct=discount,
-                gst_pct=12.0
+            # NO PRICING from AI! Confirm stock and register requirement for sales team to give commercial quote
+            confirm_msg = (
+                f"Ji {salutation}, bilkul! {opt_label} ({item['name']}) ka {qty_gross} Gross hamare godown me ready stock uplabdh hai.\n\n"
+                f"Aapki {qty_gross} Gross ki requirement hamare sales desk par note kar li gayi hai. Best commercial bulk rate aur formal quotation ke liye hamari sales team aapse turant connect karegi.\n\n"
+                f"Kripya apni company / firm ka naam aur delivery location bata dijiye sir."
             )
-
-            disc_line = f"• Special 5% Bulk Discount: -₹{disc_val:,.0f}\n" if discount > 0 else ""
-            pi_caption = (
-                f"Ji {salutation}, bilkul! {opt_label} ({item['name']}) ka {qty_gross} Gross hamare Okhla godown me ready stock hai.\n\n"
-                f"Aapke reference ke liye official Proforma Invoice upar attach kar diya hai:\n"
-                f"• {qty_gross} Gross @ ₹{rate:.0f} = ₹{gross_val:,.0f}\n"
-                f"{disc_line}"
-                f"• Net Payable (incl. 12% GST): *₹{total:,.2f}*\n\n"
-                f"Payment aap hamare HDFC चालू खाते me transfer karwa dijiye:\n"
-                f"A/C Name: ABC Buttons Pvt. Ltd.\n"
-                f"Bank: HDFC Bank, Kalkaji Branch\n"
-                f"A/C No: 50200084920192 | IFSC: HDFC0000123\n\n"
-                f"Advance ya PO confirm hote hi aaj hi packing karwa kar dispatch nikalwa denge sir. 👍"
-            )
-            send_whatsapp_image(from_phone, img_bytes, pi_caption)
+            send_whatsapp_text(from_phone, confirm_msg)
             return
 
         # Sub-Case B: Address Provided by Buyer
@@ -299,37 +271,24 @@ async def process_incoming_whatsapp_message(value_data: dict):
             return
             
         # Pricing / Quotation general inquiry
-        elif any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav"]):
-            send_whatsapp_text(
-                from_phone,
-                f"Ji {salutation}, B2B bulk orders me rate quantity (Gross) par depend karta hai. "
-                f"Aap button ki photo ya required quantity (Gross) share karein, hum turant best factory rate aur proforma quote bana kar bhej denge sir."
+        elif any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav", "paisa", "kitne ka", "charges"]):
+            rate_reply = (
+                "Ji sir, button ka rate uske design, quality aur quantity par depend karta hai.\n\n"
+                "Aap button ki photo ya design share kar dijiye. Saath hi batayein, aapko kitni quantity chahiye?\n\n"
+                "Hum aapko uske according best rate aur quotation bata denge."
             )
-            return
-
-        # Courtesy & Acknowledgement (ok, thanks, theek hai, done)
-        elif any(lower_text.strip() == w for w in [
-            "ok", "okay", "ok ji", "theek hai", "thik hai", "thanks", "thank you", 
-            "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
-            "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h"
-        ]):
-            send_whatsapp_text(
-                from_phone,
-                f"Ji bilkul {salutation}! Jaise hi parcel dispatch hota hai, tracking / docket details aapse share kar denge. Koi bhi nayi requirement ho toh zaroor batayein sir. 🙏"
-            )
+            send_whatsapp_text(from_phone, rate_reply)
             return
             
         # General greeting / assistance
         else:
-            try:
-                ai_reply = simulate_buyer_chat(text_body, history=[])
-                send_whatsapp_text(from_phone, ai_reply)
-            except Exception:
-                send_whatsapp_text(
-                    from_phone,
-                    f"Ji {salutation}, namaste! ABC Buttons me aapka swagat hai. "
-                    f"Aap button ki photo bhej kar live stock aur rate pata kar sakte hain, batayein sir hum aapki kya sahayata karein?"
-                )
+            welcome_msg = (
+                "Namaste! ABC Buttons mein aapka swagat hai.\n\n"
+                "Garments ke liye kisi bhi type ke buttons chahiye hon, toh aap button ki photo or design yahan share kar sakte hain.\n\n"
+                "Hum aapko available stock & suitable options check karke bata denge.\n\n"
+                "Batayein sir, aapko kis type ke buttons chahiye?"
+            )
+            send_whatsapp_text(from_phone, welcome_msg)
 
 # ----------------- WEBHOOK ENDPOINTS -----------------
 
