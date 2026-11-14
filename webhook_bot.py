@@ -81,15 +81,18 @@ async def process_incoming_whatsapp_message(value_data: dict):
     if msg_type == "image":
         media_id = msg.get("image", {}).get("id")
         caption = msg.get("image", {}).get("caption", "")
+        print(f"📸 [INCOMING IMAGE] From: {from_phone} | Media ID: {media_id} | Caption: {caption}")
         
         try:
             # 1. Download image bytes from Meta
             img_bytes = download_whatsapp_media(media_id)
+            print(f"✅ Downloaded {len(img_bytes)} bytes from Meta")
             
             # 2. Run AI Vision Matcher
             res = analyze_button_or_fabric_image(img_bytes, caption)
             status = res.get("match_status", "MATCH_FOUND")
             best_sku = res.get("best_match_sku")
+            print(f"🔍 AI Result: Status={status} | SKU={best_sku}")
             
             # 3. Handle non-button images
             if status == "NO_BUTTON_DETECTED" or not res.get("is_button", True):
@@ -98,6 +101,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"Namaste {contact_name}! Aapne jo photo share ki hai, usme button clear nahi dikh raha hai. "
                     f"Kripya button ki ek close-up photo achhi roshni me bhejiye, hum turant ready stock check karke batate hain."
                 )
+                print(f"⚠️ Sent NO_BUTTON_DETECTED warning to {from_phone}")
                 return
                 
             # 4. Handle button not in catalog
@@ -107,17 +111,19 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"Namaste {contact_name}! Ye specific button design abhi hamare ready catalog stock me active nahi hai. "
                     f"Hum apni factory production team se baat karke aapko update karte hain ki kya ye aapki required quantity ke liye custom tayyar kiya ja sakta hai."
                 )
+                print(f"⚠️ Sent NOT_IN_CATALOG notice to {from_phone}")
                 return
                 
             # 5. Handle Verified Catalog Match -> Send Full Option Pack!
             matched_item = get_item_by_sku(best_sku) or SAMPLE_CATALOG[0]
             
             # Message 1: Intro Greeting
-            send_whatsapp_text(
+            greeting_res = send_whatsapp_text(
                 from_phone,
                 f"Namaste {contact_name}! Welcome to ABC Buttons.\n"
                 f"Aapke bheje gaye sample ke aadhar par ye hamare paas 100% Verified Match aur running options ready stock me uplabdh hain:"
             )
+            print(f"📤 Sent Intro text to {from_phone}: {greeting_res.get('success')}")
             await asyncio.sleep(1)
             
             # Message 2: Primary Match Image + Specs
@@ -132,7 +138,8 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"• Ready Stock: *{matched_item.get('stock_gross', 0):,} Gross* ({matched_item.get('stock_gross', 0)*144:,} Pcs)\n"
                     f"• B2B Rate: ₹{matched_item.get('rate_per_gross', 0)} / Gross (1 Gr = 144 Pcs)"
                 )
-                send_whatsapp_image(from_phone, p_img_bytes, best_caption)
+                img1_res = send_whatsapp_image(from_phone, p_img_bytes, best_caption)
+                print(f"📤 Sent Best Match Image ({matched_item['sku']}): {img1_res.get('success')}")
                 await asyncio.sleep(1.5)
                 
             # Message 3 & 4: Alternative Running Options
@@ -149,17 +156,19 @@ async def process_incoming_whatsapp_message(value_data: dict):
                         f"• Available Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
                         f"• Rate: ₹{alt_item.get('rate_per_gross', 0)} / Gross"
                     )
-                    send_whatsapp_image(from_phone, alt_bytes, alt_caption)
+                    alt_res = send_whatsapp_image(from_phone, alt_bytes, alt_caption)
+                    print(f"📤 Sent Option {idx} Image ({alt_item['sku']}): {alt_res.get('success')}")
                     await asyncio.sleep(1.5)
                     
             # Message 5: Closing CTA
-            send_whatsapp_text(
+            cta_res = send_whatsapp_text(
                 from_phone,
                 f"Inme se aapko kaun sa design perfect lag raha hai? Aur approx kitne Gross quantity ki requirement hai?"
             )
+            print(f"📤 Sent Closing CTA: {cta_res.get('success')}")
             
         except Exception as e:
-            print(f"Error processing image from {from_phone}: {e}")
+            print(f"❌ Error processing image from {from_phone}: {e}")
             send_whatsapp_text(
                 from_phone,
                 f"Namaste {contact_name}! Aapka photo sample prapt hua hai. Hamare sales representative turant isko verify karke aapse sampark karenge."
