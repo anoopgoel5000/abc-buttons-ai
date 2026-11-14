@@ -1,0 +1,169 @@
+{
+  "sample_pipeline": [
+    {
+      "id": "SMP-101",
+      "company": "Shahi Exports Pvt. Ltd.",
+      "contact": "Amit Sharma (Merchandiser)",
+      "location": "Noida Sector 59",
+      "phone": "+91 98101 23456",
+      "sku": "ABC-139 (Natural River Shell)",
+      "sample_qty": "25 pcs (Hanger Card)",
+      "bulk_est": "350 Gross (~50,000 Pcs)",
+      "date": "05-Nov-2026",
+      "days_ago": 3,
+      "status": "Ready for Follow-up",
+      "followup_msg": "Hello Amit ji, hope you are doing well! Jo natural shell button ke samples diye the, kya fabric par trial check ho gaya? Bulk order ke liye approval mil jaye toh bataiyega, hum stock pehle se reserve karwa denge."
+    },
+    {
+      "id": "SMP-102",
+      "company": "Orient Craft Limited",
+      "contact": "Pooja Verma (Fabric Sourcing)",
+      "location": "Gurgaon Udyog Vihar",
+      "phone": "+91 98712 34567",
+      "sku": "ABC-142 (Ocean Turquoise Shell)",
+      "sample_qty": "10 pcs",
+      "bulk_est": "175 Gross (~25,000 Pcs)",
+      "date": "06-Nov-2026",
+      "days_ago": 2,
+      "status": "In Review by Buyer",
+      "followup_msg": "Namaste Pooja ji! Jo turquoise shell button ke samples share kiye the, kya buyer review complete ho gaya? Koi specific size ya shade aur dekhna ho toh bataiyega."
+    },
+    {
+      "id": "SMP-103",
+      "company": "Richa Global Apparels",
+      "contact": "Rajesh Kumar (Purchase Head)",
+      "location": "Okhla Phase 3",
+      "phone": "+91 99100 87654",
+      "sku": "ABC-141 (Smoky Gunmetal Shell)",
+      "sample_qty": "50 pcs",
+      "bulk_est": "850 Gross (~1,22,000 Pcs)",
+      "date": "07-Nov-2026",
+      "days_ago": 1,
+      "status": "Sample Dispatched",
+      "followup_msg": "Namaste Rajesh ji! Smoky gunmetal shell button ke samples dispatch ho gaye hain. Receive hote hi fabric trial karwa lijiye, bulk order ke liye stock ready hai."
+    }
+  ],
+  "catalog_overrides": {
+    "ABC-136": {
+      "stock_gross": 1250,
+      "rate_per_gross": 175
+    },
+    "ABC-137": {
+      "stock_gross": 280,
+      "rate_per_gross": 340
+    },
+    "ABC-138": {
+      "stock_gross": 195,
+      "rate_per_gross": 390
+    },
+    "ABC-139": {
+      "stock_gross": 520,
+      "rate_per_gross": 290
+    },
+    "ABC-140": {
+      "stock_gross": 340,
+      "rate_per_gross": 270
+    },
+    "ABC-141": {
+      "stock_gross": 780,
+      "rate_per_gross": 210
+    },
+    "ABC-142": {
+      "stock_gross": 410,
+      "rate_per_gross": 320
+    },
+    "ABC-143": {
+      "stock_gross": 480,
+      "rate_per_gross": 290
+    },
+    "ABC-144": {
+      "stock_gross": 460,
+      "rate_per_gross": 310
+    },
+    "ABC-145": {
+      "stock_gross": 380,
+      "rate_per_gross": 280
+    },
+    "ABC-146": {
+      "stock_gross": 850,
+      "rate_per_gross": 195
+    },
+    "ABC-147": {
+      "stock_gross": 2400,
+      "rate_per_gross": 65
+    },
+    "ABC-148": {
+      "stock_gross": 440,
+      "rate_per_gross": 325
+    },
+    "ABC-149": {
+      "stock_gross": 550,
+      "rate_per_gross": 320
+    },
+    "ABC-150": {
+      "stock_gross": 420,
+      "rate_per_gross": 295
+    },
+    "ABC-151": {
+      "stock_gross": 390,
+      "rate_per_gross": 340
+    },
+    "ABC-152": {
+      "stock_gross": 1500,
+      "rate_per_gross": 260
+    },
+    "ABC-153": {
+      "stock_gross": 720,
+      "rate_per_gross": 480
+    },
+    "ABC-POLY-18L-08": {
+      "stock_gross": 3100,
+      "rate_per_gross": 45
+    },
+    "ABC-POLY-18L-10": {
+      "stock_gross": 2200,
+      "rate_per_gross": 55
+    },
+    "ABC-SAMPLE-CARD-01": {
+      "stock_gross": 250,
+      "rate_per_gross": 0
+    },
+    "ABC-HRN-24L-06": {
+      "stock_gross": 380,
+      "rate_per_gross": 420
+    },
+    "ABC-COCO-24L-18": {
+      "stock_gross": 650,
+      "rate_per_gross": 135
+    },
+    "ABC-COR-24L-16": {
+      "stock_gross": 420,
+      "rate_per_gross": 360
+    },
+    "ABC-WOOD-32L-19": {
+      "stock_gross": 310,
+      "rate_per_gross": 220
+    },
+    "ABC-MTL-24L-14": {
+      "stock_gross": 290,
+      "rate_per_gross": 480
+    }
+  },
+  "quotation_history": [
+    {
+      "Date": "13-Nov-2026",
+      "Buyer": "Shahi Exports Private Limited",
+      "SKU": "ABC-139",
+      "Quantity (Gross)": "350 Gr",
+      "Rate / Gross": "\u20b9290.00",
+      "Total Payable": "\u20b9107,996.00"
+    }
+  ],
+  "latest_whatsapp_inquiry": {
+    "buyer_name": "Anoop Goel",
+    "phone": "919315702804",
+    "sku": "ABC-137",
+    "qty_gross": 200,
+    "timestamp": "2026-11-14 23:20:00"
+  }
+}

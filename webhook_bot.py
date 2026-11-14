@@ -234,6 +234,25 @@ async def process_incoming_whatsapp_message(value: dict):
                 val = int(general_num.group(1))
                 session["quantity"] = round(val / 144) if val > 1000 else val
 
+            # Save latest inquiry for Tab 5 1-Click Auto-Fill
+            try:
+                import datetime
+                ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
+                if os.path.exists(ds_path):
+                    with open(ds_path, "r", encoding="utf-8") as fp:
+                        ds = json.load(fp)
+                    ds["latest_whatsapp_inquiry"] = {
+                        "buyer_name": contact_name,
+                        "phone": from_phone,
+                        "sku": session.get("matched_sku", "ABC-137"),
+                        "qty_gross": session["quantity"],
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    with open(ds_path, "w", encoding="utf-8") as fp:
+                        json.dump(ds, fp, indent=2)
+            except Exception as e:
+                print(f"Error saving latest inquiry: {e}")
+
             # Check Situations:
             if session.get("has_photo"):
                 # Situation 2: Customer has shared photo and quantity

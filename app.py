@@ -455,12 +455,9 @@ with tabs[0]:
             fpath = os.path.join(TEST_DIR, filename)
             
             if os.path.exists(fpath):
+                with open(fpath, "rb") as f_raw:
+                    selected_img_bytes = f_raw.read()
                 img = Image.open(fpath)
-                if img.mode != "RGB":
-                    img = img.convert("RGB")
-                buf = BytesIO()
-                img.save(buf, format="JPEG")
-                selected_img_bytes = buf.getvalue()
                 selected_label = chosen_key
                 st.image(img, caption=f"Buyer WhatsApp Photo: {chosen_key}", use_container_width=True)
             
@@ -885,8 +882,15 @@ with tabs[4]:
     st.subheader("🧾 1-Click Proforma Quotation Generator (Pricing in Gross)")
     st.caption("बायर को 30 सेकंड में प्रोफेशनल कोटेशन (दरें व क्वांटिटी अनिवार्य रूप से ग्रॉस में) तैयार करके भेजें।")
     
-    # 1. Source Inquiry Selector (Connects Tab 3 & Tab 1 to Tab 5)
+    # 1. Source Inquiry Selector (Connects WhatsApp, Tab 3 & Tab 1 to Tab 5)
     inquiry_sources = []
+    latest_wa = persisted.get("latest_whatsapp_inquiry")
+    if latest_wa:
+        wa_buyer = latest_wa.get("buyer_name", "Anoop Goel")
+        wa_sku = latest_wa.get("sku", "ABC-137")
+        wa_qty = latest_wa.get("qty_gross", 200)
+        inquiry_sources.append(f"💬 Live WhatsApp Inquiry: {wa_buyer} ({wa_sku} - {wa_qty} Gross)")
+
     if "last_parsed_sample" in st.session_state:
         p_last = st.session_state["last_parsed_sample"]
         c_name = p_last.get("company_name", "Buyer")
@@ -906,8 +910,14 @@ with tabs[4]:
     default_gst = "07AAACS1234F1Z5"
     default_sku_code = "ABC-139" if any("139" in x["sku"] for x in st.session_state.live_catalog) else st.session_state.live_catalog[0]["sku"]
     default_gross = 350
+    default_phone = "919315702804"
     
-    if selected_source.startswith("🏍️") and "last_parsed_sample" in st.session_state:
+    if selected_source.startswith("💬") and latest_wa:
+        default_buyer = latest_wa.get("buyer_name", "Anoop Goel")
+        default_sku_code = latest_wa.get("sku", "ABC-137")
+        default_gross = int(latest_wa.get("qty_gross", 200))
+        default_phone = latest_wa.get("phone", "919315702804")
+    elif selected_source.startswith("🏍️") and "last_parsed_sample" in st.session_state:
         p_last = st.session_state["last_parsed_sample"]
         default_buyer = p_last.get("company_name") or default_buyer
         b_text = str(p_last.get("button_sku_or_description", "")).lower()
