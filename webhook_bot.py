@@ -22,7 +22,8 @@ from catalog import SAMPLE_CATALOG
 from whatsapp_service import (
     send_whatsapp_text,
     send_whatsapp_image,
-    download_whatsapp_media
+    download_whatsapp_media,
+    generate_proforma_card_image
 )
 
 app = FastAPI(title="ABC Buttons 24/7 WhatsApp AI Bot")
@@ -32,6 +33,14 @@ CAT_DIR = os.path.join(BASE_DIR, "catalog_images")
 
 # In-memory deduplication of message IDs
 processed_msg_ids = set()
+received_events = []
+
+@app.get("/history")
+def get_history():
+    return {
+        "total_events": len(received_events),
+        "recent_events": received_events[-15:]
+    }
 
 def get_item_by_sku(sku: str):
     return next((x for x in SAMPLE_CATALOG if x["sku"] == sku), None)
@@ -178,9 +187,86 @@ async def process_incoming_whatsapp_message(value_data: dict):
     elif msg_type == "text":
         text_body = msg.get("text", {}).get("body", "").strip()
         lower_text = text_body.lower()
-        
-        # Sample card inquiry
-        if any(w in lower_text for w in ["sample", "card", "hanger", "swatch"]):
+        import re
+        print(f"💬 [INCOMING TEXT] From: {from_phone} | Message: '{text_body}'")
+
+        # Sub-Case A: Buyer mentions quantity or order (e.g. "300 gross", "option 1 chahiye 250 gross", "bill bhej do")
+        qty_match = re.search(r'(\d+)\s*(?:gross|gr|pcs|pieces)?', lower_text)
+        is_order_inquiry = any(w in lower_text for w in ["gross", "order", "bill", "proforma", "invoice", "chahiye", "bhej do", "pack", "dispatch", "option"]) and (qty_match or "option" in lower_text or "bill" in lower_text)
+
+        if is_order_inquiry and not any(w in lower_text for w in ["sample", "card", "swatch"]):
+            # Determine selected SKU
+            target_sku = "ABC-136"
+            if "option 1" in lower_text or "136" in lower_text or "agoya" in lower_text:
+                target_sku = "ABC-136"
+            elif "option 2" in lower_text or "139" in lower_text or "river" in lower_text:
+                target_sku = "ABC-139"
+            elif "option 3" in lower_text or "137" in lower_text or "caramel" in lower_text or "gold" in lower_text:
+                target_sku = "ABC-137"
+            elif "141" in lower_text or "smoky" in lower_text:
+                target_sku = "ABC-141"
+            elif "142" in lower_text or "turquoise" in lower_text or "teal" in lower_text:
+                target_sku = "ABC-142"
+
+            qty_gross = int(qty_match.group(1)) if qty_match and int(qty_match.group(1)) > 0 else 300
+            if qty_gross > 10000:
+                qty_gross = round(qty_gross / 144)
+
+            item = get_item_by_sku(target_sku) or SAMPLE_CATALOG[0]
+            rate = item.get("rate_per_gross", 290.0)
+            discount = 5.0 if qty_gross >= 200 else 0.0
+            gross_val = qty_gross * rate
+            disc_val = gross_val * (discount / 100.0)
+            taxable = gross_val - disc_val
+            gst = taxable * 0.12
+            total = taxable + gst
+
+            print(f"🧾 Generating Automated Proforma Invoice for {from_phone}: SKU={target_sku} | Qty={qty_gross} Gross | Total=₹{total:,.2f}")
+
+            # Generate High-Res Invoice Card Image
+            img_bytes = generate_proforma_card_image(
+                buyer_name=contact_name,
+                buyer_gst="07AAAAA0000A1Z5",
+                sku=target_sku,
+                item_name=item["name"],
+                item_spec=f"SKU: {target_sku} • Size: {item.get('size_ligne', '')} • {item.get('holes', '')}",
+                qty_gross=qty_gross,
+                rate_gross=rate,
+                discount_pct=discount,
+                gst_pct=12.0
+            )
+
+            pi_caption = (
+                f"📋 *OFFICIAL PROFORMA INVOICE (PI-2026-QT)*\n"
+                f"• Item: {item['name']}\n"
+                f"• Quantity: *{qty_gross} Gross* (= {qty_gross*144:,} Pieces)\n"
+                f"• Rate: ₹{rate:.2f} / Gross\n"
+                f"• *Total Payable (incl. GST): ₹{total:,.2f}*\n\n"
+                f"🏦 *Bank Details for RTGS / NEFT:*\n"
+                f"A/C Name: ABC Buttons Pvt. Ltd.\n"
+                f"Bank: HDFC Bank, Kalkaji Branch\n"
+                f"A/C No: 50200084920192 | IFSC: HDFC0000123\n\n"
+                f"Ready Ex-Stock Okhla Godown. Advance/PO confirm hote hi dispatch ho jayega."
+            )
+            send_whatsapp_image(from_phone, img_bytes, pi_caption)
+            await asyncio.sleep(1)
+            send_whatsapp_text(
+                from_phone,
+                f"Namaste {contact_name}! Aapki requirement ({qty_gross} Gross) ka official Proforma Invoice bhej diya hai. Kripya purchase order ya advance confirm karein, hum turant packing aur dispatch shuru karwa denge."
+            )
+            return
+
+        # Sub-Case B: Address Provided by Buyer
+        if any(w in lower_text for w in ["plot", "sector", "phase", "road", "gali", "noida", "gurgaon", "okhla", "delhi", "pin", "near"]):
+            send_whatsapp_text(
+                from_phone,
+                f"✅ Dhanyawad {contact_name}! Aapka delivery address hamare logistics system me record ho gaya hai.\n"
+                f"ABC Buttons dispatch team aaj hi sample hanger card courier schedule kar degi."
+            )
+            return
+
+        # Sub-Case C: Sample card inquiry
+        if any(w in lower_text for w in ["sample", "card", "hanger", "swatch", "trial", "pcs"]):
             card_path = os.path.join(CAT_DIR, "ABC-SAMPLE-CARD-01.jpg")
             if os.path.exists(card_path):
                 with open(card_path, "rb") as cfp:
@@ -196,16 +282,18 @@ async def process_incoming_whatsapp_message(value_data: dict):
             send_whatsapp_text(
                 from_phone,
                 f"Namaste {contact_name}! Hamara full range sample card bilkul ready hai. "
-                f"Kripya apna factory / office delivery address share kar dijiye, hum aaj hi courier dispatch karwa denge."
+                f"Kripya apna factory / office delivery address aur pin code yahan likh kar share kar dijiye, hum aaj hi courier dispatch karwa denge."
             )
+            return
             
-        # Pricing / Quotation inquiry
+        # Pricing / Quotation general inquiry
         elif any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav"]):
             send_whatsapp_text(
                 from_phone,
                 f"Namaste {contact_name}! B2B bulk orders ke liye exact rate quantity (Gross) par depend karta hai. "
                 f"Kripya button ki photo ya SKU code aur apni required quantity (Gross) share karein, hum turant 1-click Proforma Quotation generate kar denge."
             )
+            return
             
         # General greeting / assistance
         else:
@@ -261,6 +349,11 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     try:
         payload = await request.json()
+        import datetime
+        t_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        received_events.append({"time": t_str, "payload": payload})
+        print(f"📥 [WEBHOOK ARRIVED at {t_str}] Payload: {json.dumps(payload)[:250]}")
+        
         entry = payload.get("entry", [])
         if entry:
             changes = entry[0].get("changes", [])
