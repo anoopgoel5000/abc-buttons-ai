@@ -117,13 +117,20 @@ async def process_incoming_whatsapp_message(value: dict):
                 )
                 return
                 
-            # 4. Handle button not in catalog
+            # 4. Handle button not in catalog (Unavailable Product & Alternative Rule)
             if status == "NOT_IN_CATALOG" or not best_sku:
-                send_whatsapp_text(
-                    from_phone,
-                    f"Ji {salutation}, ye specific button design abhi hamare ready catalog stock me active nahi hai. "
-                    f"Hum apni production team se baat karke update karte hain ki kya ye custom tayyar kiya ja sakta hai."
+                session["has_photo"] = True
+                # Fetch 2 closest running alternatives from catalog
+                alts = SAMPLE_CATALOG[:2]
+                alt_lines = "\n".join([f"• {a['name']} ({a.get('size_ligne', '')}) - Ready Godown Stock" for a in alts])
+                not_in_cat_msg = (
+                    f"Ji {salutation}, aapka sample dekh liya hai.\n\n"
+                    f"Ye exact button design abhi hamare ready stock me available nahi hai. "
+                    f"Lekin isse milte-julte ye 2 running options ready stock me uplabdh hain:\n\n"
+                    f"{alt_lines}\n\n"
+                    f"Kya aap inke matching samples dekhna chahenge, ya aapko yahi exact design factory se develop karwana hai sir?"
                 )
+                send_whatsapp_text(from_phone, not_in_cat_msg)
                 return
                 
             # 5. Handle Verified Catalog Match -> Update Session Context
@@ -298,16 +305,28 @@ async def process_incoming_whatsapp_message(value: dict):
                 send_whatsapp_text(from_phone, rate_reply)
             return
 
-        # Sub-Case E: Courtesy & Acknowledgement (ok, thanks, theek hai, done)
+        # Sub-Case E: Courtesy & Acknowledgement (Order Status & Dispatch Rule)
         elif any(lower_text.strip() == w for w in [
             "ok", "okay", "ok ji", "theek hai", "thik hai", "thanks", "thank you", 
             "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
             "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h"
         ]):
-            send_whatsapp_text(
-                from_phone,
-                f"Ji bilkul {salutation}! Jaise hi parcel dispatch hota hai, tracking / docket details aapse share kar denge. Koi bhi nayi requirement ho toh zaroor batayein sir. 🙏"
-            )
+            # Maintain context of actual stage - Never assume order confirmed or promise dispatch on 'OK'!
+            if session.get("has_address") and not session.get("quantity"):
+                send_whatsapp_text(
+                    from_phone,
+                    f"Ji bilkul {salutation}! Sample dispatch ki details aapse share kar denge. Dhanyawad sir! 🙏"
+                )
+            elif session.get("quantity"):
+                send_whatsapp_text(
+                    from_phone,
+                    f"Ji bilkul {salutation}! Quotation ready hote hi hum turant aapse share karenge. Dhanyawad sir! 🙏"
+                )
+            else:
+                send_whatsapp_text(
+                    from_phone,
+                    f"Ji bilkul {salutation}! Dhanyawad. Koi bhi requirement ya query ho toh zaroor batayein sir. 🙏"
+                )
             return
             
         # Sub-Case F: General greeting / assistance
