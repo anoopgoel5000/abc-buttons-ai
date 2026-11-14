@@ -85,6 +85,8 @@ async def process_incoming_whatsapp_message(value_data: dict):
         
     from_phone = msg.get("from")
     msg_type = msg.get("type")
+    first_name = contact_name.split()[0] if contact_name and contact_name != "Buyer" else "Sir"
+    salutation = f"{first_name} ji" if first_name not in ["Sir"] else "Sir"
     
     # ---------------- CASE 1: BUYER SENT A PHOTO ----------------
     if msg_type == "image":
@@ -107,7 +109,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
             if status == "NO_BUTTON_DETECTED" or not res.get("is_button", True):
                 send_whatsapp_text(
                     from_phone,
-                    f"Namaste {contact_name}! Aapne jo photo share ki hai, usme button clear nahi dikh raha hai. "
+                    f"Ji {salutation}, aapne jo photo share ki hai usme button clear nahi dikh raha hai. "
                     f"Kripya button ki ek close-up photo achhi roshni me bhejiye, hum turant ready stock check karke batate hain."
                 )
                 print(f"⚠️ Sent NO_BUTTON_DETECTED warning to {from_phone}")
@@ -117,8 +119,8 @@ async def process_incoming_whatsapp_message(value_data: dict):
             if status == "NOT_IN_CATALOG" or not best_sku:
                 send_whatsapp_text(
                     from_phone,
-                    f"Namaste {contact_name}! Ye specific button design abhi hamare ready catalog stock me active nahi hai. "
-                    f"Hum apni factory production team se baat karke aapko update karte hain ki kya ye aapki required quantity ke liye custom tayyar kiya ja sakta hai."
+                    f"Ji {salutation}, ye specific button design abhi hamare ready catalog stock me active nahi hai. "
+                    f"Hum apni production team se baat karke update karte hain ki kya ye custom tayyar kiya ja sakta hai."
                 )
                 print(f"⚠️ Sent NOT_IN_CATALOG notice to {from_phone}")
                 return
@@ -129,8 +131,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
             # Message 1: Intro Greeting
             greeting_res = send_whatsapp_text(
                 from_phone,
-                f"Namaste {contact_name}! Welcome to ABC Buttons.\n"
-                f"Aapke bheje gaye sample ke aadhar par ye hamare paas 100% Verified Match aur running options ready stock me uplabdh hain:"
+                f"Ji {salutation}, namaste! Aapka button sample dekh liya hai. Ye hamare paas regular running stock me ready uplabdh hai:"
             )
             print(f"📤 Sent Intro text to {from_phone}: {greeting_res.get('success')}")
             await asyncio.sleep(1)
@@ -141,11 +142,11 @@ async def process_incoming_whatsapp_message(value_data: dict):
                 with open(p_img_path, "rb") as fp:
                     p_img_bytes = fp.read()
                 best_caption = (
-                    f"🏆 *100% Best Match: {matched_item['name']}*\n"
-                    f"• Official SKU: `{matched_item['sku']}`\n"
+                    f"🏆 *100% Matching Stock: {matched_item['name']}*\n"
                     f"• Size: {matched_item.get('size_ligne', '')} • {matched_item.get('holes', '')}\n"
-                    f"• Ready Stock: *{matched_item.get('stock_gross', 0):,} Gross* ({matched_item.get('stock_gross', 0)*144:,} Pcs)\n"
-                    f"• B2B Rate: ₹{matched_item.get('rate_per_gross', 0)} / Gross (1 Gr = 144 Pcs)"
+                    f"• Ready Godown Stock: *{matched_item.get('stock_gross', 0):,} Gross* ({matched_item.get('stock_gross', 0)*144:,} Pcs)\n"
+                    f"• B2B Rate: ₹{matched_item.get('rate_per_gross', 0)} / Gross (1 Gross = 144 Pcs)\n\n"
+                    f"Same quality aur export finish Okhla godown me ready mil jayegi."
                 )
                 img1_res = send_whatsapp_image(from_phone, p_img_bytes, best_caption)
                 print(f"📤 Sent Best Match Image ({matched_item['sku']}): {img1_res.get('success')}")
@@ -160,9 +161,8 @@ async def process_incoming_whatsapp_message(value_data: dict):
                         alt_bytes = afp.read()
                     alt_caption = (
                         f"🔘 *Option {idx}: {alt_item['name']}*\n"
-                        f"• SKU: `{alt_item['sku']}` | Category: {alt_item['category']}\n"
                         f"• Size: {alt_item.get('size_ligne', '')} • {alt_item.get('holes', '')}\n"
-                        f"• Available Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
+                        f"• Ready Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
                         f"• Rate: ₹{alt_item.get('rate_per_gross', 0)} / Gross"
                     )
                     alt_res = send_whatsapp_image(from_phone, alt_bytes, alt_caption)
@@ -172,7 +172,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
             # Message 5: Closing CTA
             cta_res = send_whatsapp_text(
                 from_phone,
-                f"Inme se aapko kaun sa design perfect lag raha hai? Aur approx kitne Gross quantity ki requirement hai?"
+                f"Inme se aapko kaun sa design sahi baith raha hai sir? Aur approx kitne Gross ki requirement hai, batayein toh best bulk rate confirm karwa dete hain."
             )
             print(f"📤 Sent Closing CTA: {cta_res.get('success')}")
             
@@ -180,7 +180,7 @@ async def process_incoming_whatsapp_message(value_data: dict):
             print(f"❌ Error processing image from {from_phone}: {e}")
             send_whatsapp_text(
                 from_phone,
-                f"Namaste {contact_name}! Aapka photo sample prapt hua hai. Hamare sales representative turant isko verify karke aapse sampark karenge."
+                f"Ji {salutation}, aapka photo sample prapt hua hai. Hamare sales representative turant isko verify karke aapse sampark karenge."
             )
 
     # ---------------- CASE 2: BUYER SENT A TEXT MESSAGE ----------------
@@ -201,16 +201,22 @@ async def process_incoming_whatsapp_message(value_data: dict):
         if is_order_inquiry:
             # Determine selected SKU
             target_sku = "ABC-136"
+            opt_label = "Option 1"
             if "option 1" in lower_text or "136" in lower_text or "agoya" in lower_text:
                 target_sku = "ABC-136"
+                opt_label = "Option 1"
             elif "option 2" in lower_text or "139" in lower_text or "river" in lower_text:
                 target_sku = "ABC-139"
+                opt_label = "Option 2"
             elif "option 3" in lower_text or "137" in lower_text or "caramel" in lower_text or "gold" in lower_text:
                 target_sku = "ABC-137"
+                opt_label = "Option 3"
             elif "141" in lower_text or "smoky" in lower_text:
                 target_sku = "ABC-141"
+                opt_label = "Option 4"
             elif "142" in lower_text or "turquoise" in lower_text or "teal" in lower_text:
                 target_sku = "ABC-142"
+                opt_label = "Option 5"
 
             # Determine accurate quantity in Gross
             if gross_match:
@@ -247,32 +253,28 @@ async def process_incoming_whatsapp_message(value_data: dict):
                 gst_pct=12.0
             )
 
+            disc_line = f"• Special 5% Bulk Discount: -₹{disc_val:,.0f}\n" if discount > 0 else ""
             pi_caption = (
-                f"📋 *OFFICIAL PROFORMA INVOICE (PI-2026-QT)*\n"
-                f"• Item: {item['name']}\n"
-                f"• Quantity: *{qty_gross} Gross* (= {qty_gross*144:,} Pieces)\n"
-                f"• Rate: ₹{rate:.2f} / Gross\n"
-                f"• *Total Payable (incl. GST): ₹{total:,.2f}*\n\n"
-                f"🏦 *Bank Details for RTGS / NEFT:*\n"
+                f"Ji {salutation}, bilkul! {opt_label} ({item['name']}) ka {qty_gross} Gross hamare Okhla godown me ready stock hai.\n\n"
+                f"Aapke reference ke liye official Proforma Invoice upar attach kar diya hai:\n"
+                f"• {qty_gross} Gross @ ₹{rate:.0f} = ₹{gross_val:,.0f}\n"
+                f"{disc_line}"
+                f"• Net Payable (incl. 12% GST): *₹{total:,.2f}*\n\n"
+                f"Payment aap hamare HDFC चालू खाते me transfer karwa dijiye:\n"
                 f"A/C Name: ABC Buttons Pvt. Ltd.\n"
                 f"Bank: HDFC Bank, Kalkaji Branch\n"
                 f"A/C No: 50200084920192 | IFSC: HDFC0000123\n\n"
-                f"Ready Ex-Stock Okhla Godown. Advance/PO confirm hote hi dispatch ho jayega."
+                f"Advance ya PO confirm hote hi aaj hi packing karwa kar dispatch nikalwa denge sir. 👍"
             )
             send_whatsapp_image(from_phone, img_bytes, pi_caption)
-            await asyncio.sleep(1)
-            send_whatsapp_text(
-                from_phone,
-                f"Namaste {contact_name}! Aapki requirement ({qty_gross} Gross) ka official Proforma Invoice bhej diya hai. Kripya purchase order ya advance confirm karein, hum turant packing aur dispatch shuru karwa denge."
-            )
             return
 
         # Sub-Case B: Address Provided by Buyer
         if any(w in lower_text for w in ["plot", "sector", "phase", "road", "gali", "noida", "gurgaon", "okhla", "delhi", "pin", "near"]):
             send_whatsapp_text(
                 from_phone,
-                f"✅ Dhanyawad {contact_name}! Aapka delivery address hamare logistics system me record ho gaya hai.\n"
-                f"ABC Buttons dispatch team aaj hi sample hanger card courier schedule kar degi."
+                f"Ji dhanyawad {salutation}! Delivery address note kar liya hai.\n"
+                f"Hamari dispatch team aaj hi sample hanger card courier me nikalwa degi aur tracking details aapse share kar denge sir."
             )
             return
 
@@ -282,27 +284,26 @@ async def process_incoming_whatsapp_message(value_data: dict):
             if os.path.exists(card_path):
                 with open(card_path, "rb") as cfp:
                     card_bytes = cfp.read()
-                send_whatsapp_image(
-                    from_phone,
-                    card_bytes,
-                    "📦 *ABC Buttons Official Shell Button Sample Hanger Card*\n"
-                    "Includes running sizes (14L to 24L) of River Shell, MOP, Agoya & Trocas.\n"
-                    "Ready for immediate courier dispatch!"
+                card_caption = (
+                    f"📦 *ABC Buttons Official Shell Button Sample Hanger Card*\n"
+                    f"Isme 14L se 24L tak ke running River Shell, MOP, Agoya aur Trocas ke samples lage hue hain.\n\n"
+                    f"Ji {salutation}, aap factory ya office ka delivery address aur pin code share kar dijiye, hum aaj hi sample card courier dispatch karwa denge sir."
                 )
-                await asyncio.sleep(1)
-            send_whatsapp_text(
-                from_phone,
-                f"Namaste {contact_name}! Hamara full range sample card bilkul ready hai. "
-                f"Kripya apna factory / office delivery address aur pin code yahan likh kar share kar dijiye, hum aaj hi courier dispatch karwa denge."
-            )
+                send_whatsapp_image(from_phone, card_bytes, card_caption)
+            else:
+                send_whatsapp_text(
+                    from_phone,
+                    f"Ji {salutation}, hamara full range sample card bilkul ready hai. "
+                    f"Kripya factory delivery address aur pin code share kar dijiye, hum aaj hi courier dispatch karwa denge sir."
+                )
             return
             
         # Pricing / Quotation general inquiry
         elif any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav"]):
             send_whatsapp_text(
                 from_phone,
-                f"Namaste {contact_name}! B2B bulk orders ke liye exact rate quantity (Gross) par depend karta hai. "
-                f"Kripya button ki photo ya SKU code aur apni required quantity (Gross) share karein, hum turant 1-click Proforma Quotation generate kar denge."
+                f"Ji {salutation}, B2B bulk orders me rate quantity (Gross) par depend karta hai. "
+                f"Aap button ki photo ya required quantity (Gross) share karein, hum turant best factory rate aur proforma quote bana kar bhej denge sir."
             )
             return
             
@@ -314,8 +315,8 @@ async def process_incoming_whatsapp_message(value_data: dict):
             except Exception:
                 send_whatsapp_text(
                     from_phone,
-                    f"Namaste {contact_name}! ABC Buttons Private Limited me aapka swagat hai. "
-                    f"Aap hume button ki photo bhej kar live stock aur rate pata kar sakte hain. Hum aapki kya sahayata kar sakte hain?"
+                    f"Ji {salutation}, namaste! ABC Buttons me aapka swagat hai. "
+                    f"Aap button ki photo bhej kar live stock aur rate pata kar sakte hain, batayein sir hum aapki kya sahayata karein?"
                 )
 
 # ----------------- WEBHOOK ENDPOINTS -----------------
