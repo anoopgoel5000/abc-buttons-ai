@@ -190,11 +190,15 @@ async def process_incoming_whatsapp_message(value_data: dict):
         import re
         print(f"💬 [INCOMING TEXT] From: {from_phone} | Message: '{text_body}'")
 
-        # Sub-Case A: Buyer mentions quantity or order (e.g. "300 gross", "option 1 chahiye 250 gross", "bill bhej do")
-        qty_match = re.search(r'(\d+)\s*(?:gross|gr|pcs|pieces)?', lower_text)
-        is_order_inquiry = any(w in lower_text for w in ["gross", "order", "bill", "proforma", "invoice", "chahiye", "bhej do", "pack", "dispatch", "option"]) and (qty_match or "option" in lower_text or "bill" in lower_text)
+        # Sub-Case A: Buyer mentions quantity or order (e.g. "300 gross", "option 3 chahiye 200 gross", "bill bhej do")
+        gross_match = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
+        pcs_match = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
+        cleaned_for_num = re.sub(r'option\s*\d+', '', lower_text) # remove 'option 3' so 3 isn't mistaken for quantity
+        general_num = re.search(r'(\d+)', cleaned_for_num)
+        
+        is_order_inquiry = any(w in lower_text for w in ["gross", "order", "bill", "proforma", "invoice", "chahiye", "bhej do", "pack", "dispatch", "option", "pi"]) and not any(w in lower_text for w in ["sample", "card", "swatch"])
 
-        if is_order_inquiry and not any(w in lower_text for w in ["sample", "card", "swatch"]):
+        if is_order_inquiry:
             # Determine selected SKU
             target_sku = "ABC-136"
             if "option 1" in lower_text or "136" in lower_text or "agoya" in lower_text:
@@ -208,9 +212,16 @@ async def process_incoming_whatsapp_message(value_data: dict):
             elif "142" in lower_text or "turquoise" in lower_text or "teal" in lower_text:
                 target_sku = "ABC-142"
 
-            qty_gross = int(qty_match.group(1)) if qty_match and int(qty_match.group(1)) > 0 else 300
-            if qty_gross > 10000:
-                qty_gross = round(qty_gross / 144)
+            # Determine accurate quantity in Gross
+            if gross_match:
+                qty_gross = int(gross_match.group(1))
+            elif pcs_match:
+                qty_gross = max(1, round(int(pcs_match.group(1)) / 144))
+            elif general_num:
+                val = int(general_num.group(1))
+                qty_gross = round(val / 144) if val > 1000 else val
+            else:
+                qty_gross = 200  # standard B2B sample production batch
 
             item = get_item_by_sku(target_sku) or SAMPLE_CATALOG[0]
             rate = item.get("rate_per_gross", 290.0)
