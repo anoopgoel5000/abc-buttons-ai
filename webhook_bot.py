@@ -1,77 +1,77 @@
-"""
-24/7 Automated Meta WhatsApp Webhook AI Bot for ABC Buttons Private Limited
-Automatically receives buyer button photos on WhatsApp, runs AI Vision,
-and replies in 3-5 seconds with matching HD catalog photos, stock in Gross,
-and alternative running options.
-"""
-
 import os
 import json
 import asyncio
+import re
 from fastapi import FastAPI, Request, Response, BackgroundTasks
-from fastapi.responses import PlainTextResponse, JSONResponse
-import uvicorn
+from fastapi.responses import JSONResponse, PlainTextResponse
 
-import sys
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-from ai_engine import analyze_button_or_fabric_image, simulate_buyer_chat
-from catalog import SAMPLE_CATALOG
+from ai_engine import analyze_button_or_fabric_image, SAMPLE_CATALOG, simulate_buyer_chat
 from whatsapp_service import (
     send_whatsapp_text,
     send_whatsapp_image,
-    download_whatsapp_media,
-    generate_proforma_card_image
+    download_whatsapp_media
 )
 
-app = FastAPI(title="ABC Buttons 24/7 WhatsApp AI Bot")
+app = FastAPI(title="ABC Buttons WhatsApp Webhook Server")
 
 VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "abc_buttons_secret_2026")
-CAT_DIR = os.path.join(BASE_DIR, "catalog_images")
+CAT_DIR = os.path.join(os.path.dirname(__file__), "catalog_images")
 
-# In-memory deduplication of message IDs
+# In-memory customer context session store
+buyer_sessions = {}
+
+def get_buyer_session(phone: str) -> dict:
+    if phone not in buyer_sessions:
+        buyer_sessions[phone] = {
+            "has_photo": False,
+            "matched_sku": None,
+            "matched_name": None,
+            "matched_size": None,
+            "quantity": None,
+            "has_address": False,
+            "history_count": 0
+        }
+    return buyer_sessions[phone]
+
+# Message deduplication cache
 processed_msg_ids = set()
+
+# Real-time event log for debugging
 received_events = []
 
-@app.get("/history")
-def get_history():
-    return {
-        "total_events": len(received_events),
-        "recent_events": received_events[-15:]
-    }
-
 def get_item_by_sku(sku: str):
-    return next((x for x in SAMPLE_CATALOG if x["sku"] == sku), None)
+    for item in SAMPLE_CATALOG:
+        if item.get("sku") == sku:
+            return item
+    return None
 
 def get_alternative_skus(best_sku: str, limit: int = 2):
-    """Finds alternative running SKUs from the same or related category."""
-    alternatives = []
-    best_item = get_item_by_sku(best_sku)
-    cat = best_item.get("category", "") if best_item else ""
-    
-    # Preferred alternatives
-    for itm in SAMPLE_CATALOG:
-        if itm["sku"] != best_sku:
-            if cat and itm.get("category") == cat:
-                alternatives.append(itm)
-            elif "SAMPLE-CARD" in itm["sku"]:
-                alternatives.append(itm)
-                
-    if len(alternatives) < limit:
-        for itm in SAMPLE_CATALOG:
-            if itm["sku"] != best_sku and itm not in alternatives:
-                alternatives.append(itm)
-                
-    return alternatives[:limit]
+    alts = []
+    for item in SAMPLE_CATALOG:
+        if item.get("sku") != best_sku and item.get("sku") != "ABC-SAMPLE-CARD-01":
+            alts.append(item)
+            if len(alts) >= limit:
+                break
+    return alts
 
-async def process_incoming_whatsapp_message(value_data: dict):
-    """Processes incoming WhatsApp messages in background task to avoid webhook timeout."""
-    contacts = value_data.get("contacts", [])
-    contact_name = contacts[0].get("profile", {}).get("name", "Buyer") if contacts else "Buyer"
-    
-    messages = value_data.get("messages", [])
+async def process_incoming_whatsapp_message(value: dict):
+    """
+    Stateful Customer Context Aware WhatsApp Message Handler.
+    Enforces One Question at a Time Rule, Never Asks Repeated Questions, and remembers all context.
+    """
+    contacts = value.get("contacts", [])
+    contact_name = "Sir"
+    if contacts:
+        contact_name = contacts[0].get("profile", {}).get("name", "Sir")
+        
+    messages = value.get("messages", [])
     if not messages:
         return
         
@@ -87,6 +87,9 @@ async def process_incoming_whatsapp_message(value_data: dict):
     msg_type = msg.get("type")
     first_name = contact_name.split()[0] if contact_name and contact_name != "Buyer" else "Sir"
     salutation = f"{first_name} ji" if first_name not in ["Sir"] else "Sir"
+    
+    session = get_buyer_session(from_phone)
+    session["history_count"] += 1
     
     # ---------------- CASE 1: BUYER SENT A PHOTO ----------------
     if msg_type == "image":
@@ -112,7 +115,6 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"Ji {salutation}, aapne jo photo share ki hai usme button clear nahi dikh raha hai. "
                     f"Kripya button ki ek close-up photo achhi roshni me bhejiye, hum turant ready stock check karke batate hain."
                 )
-                print(f"⚠️ Sent NO_BUTTON_DETECTED warning to {from_phone}")
                 return
                 
             # 4. Handle button not in catalog
@@ -122,21 +124,16 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"Ji {salutation}, ye specific button design abhi hamare ready catalog stock me active nahi hai. "
                     f"Hum apni production team se baat karke update karte hain ki kya ye custom tayyar kiya ja sakta hai."
                 )
-                print(f"⚠️ Sent NOT_IN_CATALOG notice to {from_phone}")
                 return
                 
-            # 5. Handle Verified Catalog Match -> Send Full Option Pack!
+            # 5. Handle Verified Catalog Match -> Update Session Context
             matched_item = get_item_by_sku(best_sku) or SAMPLE_CATALOG[0]
+            session["has_photo"] = True
+            session["matched_sku"] = matched_item["sku"]
+            session["matched_name"] = matched_item["name"]
+            session["matched_size"] = matched_item.get("size_ligne", "")
             
-            # Message 1: Intro Greeting
-            greeting_res = send_whatsapp_text(
-                from_phone,
-                f"Ji {salutation}, namaste! Aapka button sample dekh liya hai. Ye hamare paas regular running stock me ready uplabdh hai:"
-            )
-            print(f"📤 Sent Intro text to {from_phone}: {greeting_res.get('success')}")
-            await asyncio.sleep(1)
-            
-            # Message 2: Primary Match Image + Specs
+            # Message 1: Primary Match Image + Specs
             p_img_path = os.path.join(CAT_DIR, f"{matched_item['sku']}.jpg")
             if os.path.exists(p_img_path):
                 with open(p_img_path, "rb") as fp:
@@ -148,11 +145,10 @@ async def process_incoming_whatsapp_message(value_data: dict):
                     f"• Stock Status: Available in Godown\n\n"
                     f"Same quality aur premium export finish ready mil jayegi."
                 )
-                img1_res = send_whatsapp_image(from_phone, p_img_bytes, best_caption)
-                print(f"📤 Sent Best Match Image ({matched_item['sku']}): {img1_res.get('success')}")
+                send_whatsapp_image(from_phone, p_img_bytes, best_caption)
                 await asyncio.sleep(1.5)
                 
-            # Message 3 & 4: Alternative Running Options
+            # Message 2 & 3: Alternative Running Options
             alternatives = get_alternative_skus(best_sku, limit=2)
             for idx, alt_item in enumerate(alternatives, start=2):
                 alt_path = os.path.join(CAT_DIR, f"{alt_item['sku']}.jpg")
@@ -165,16 +161,23 @@ async def process_incoming_whatsapp_message(value_data: dict):
                         f"• Ready Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
                         f"• Stock Status: Ready Godown Stock"
                     )
-                    alt_res = send_whatsapp_image(from_phone, alt_bytes, alt_caption)
-                    print(f"📤 Sent Option {idx} Image ({alt_item['sku']}): {alt_res.get('success')}")
+                    send_whatsapp_image(from_phone, alt_bytes, alt_caption)
                     await asyncio.sleep(1.5)
                     
-            # Message 5: Closing CTA
-            cta_res = send_whatsapp_text(
-                from_phone,
-                f"Inme se aapko kaun sa design sahi baith raha hai sir? Aur approx kitne Gross ki requirement hai, batayein toh quotation aur sample confirm karwa dete hain."
-            )
-            print(f"📤 Sent Closing CTA: {cta_res.get('success')}")
+            # ONE QUESTION AT A TIME RULE (IDEAL CUSTOMER RESPONSE)
+            if not session.get("quantity"):
+                cta_text = (
+                    "Ji sir, aapke share kiye hue sample ka matching stock hamare paas available hai.\n\n"
+                    "Aapko kitni quantity chahiye?"
+                )
+            else:
+                # If quantity already provided earlier
+                cta_text = (
+                    f"Ji sir, aapka sample identify ho gaya hai. "
+                    f"Aapki {session['quantity']} Gross requirement ke according hum quotation check karte hain."
+                )
+            send_whatsapp_text(from_phone, cta_text)
+            print(f"📤 Sent Ideal One-Question-At-A-Time CTA to {from_phone}")
             
         except Exception as e:
             print(f"❌ Error processing image from {from_phone}: {e}")
@@ -187,62 +190,58 @@ async def process_incoming_whatsapp_message(value_data: dict):
     elif msg_type == "text":
         text_body = msg.get("text", {}).get("body", "").strip()
         lower_text = text_body.lower()
-        import re
         print(f"💬 [INCOMING TEXT] From: {from_phone} | Message: '{text_body}'")
 
-        # Sub-Case A: Buyer mentions quantity or order (e.g. "300 gross", "option 3 chahiye 200 gross", "bill bhej do")
+        # Parse quantity if stated
         gross_match = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
         pcs_match = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
-        cleaned_for_num = re.sub(r'option\s*\d+', '', lower_text) # remove 'option 3' so 3 isn't mistaken for quantity
+        cleaned_for_num = re.sub(r'option\s*\d+', '', lower_text) # remove 'option 3'
         general_num = re.search(r'(\d+)', cleaned_for_num)
         
-        is_order_inquiry = any(w in lower_text for w in ["gross", "order", "bill", "proforma", "invoice", "chahiye", "bhej do", "pack", "dispatch", "option", "pi"]) and not any(w in lower_text for w in ["sample", "card", "swatch"])
+        has_qty_in_msg = bool(gross_match or pcs_match or (general_num and any(w in lower_text for w in ["gross", "order", "chahiye", "pack", "dispatch", "pcs", "pieces", "gr"])))
+        
+        # Check Option selection
+        if "option 1" in lower_text or "136" in lower_text or "agoya" in lower_text:
+            session["matched_sku"] = "ABC-136"
+            session["matched_name"] = "ABC-136 Agoya Shell Button"
+        elif "option 2" in lower_text or "139" in lower_text or "river" in lower_text:
+            session["matched_sku"] = "ABC-139"
+            session["matched_name"] = "ABC-139 Natural White River Shell Button"
+        elif "option 3" in lower_text or "137" in lower_text or "caramel" in lower_text or "gold" in lower_text:
+            session["matched_sku"] = "ABC-137"
+            session["matched_name"] = "ABC-137 Caramel Gold MOP Shell Button"
+        elif "141" in lower_text or "smoky" in lower_text:
+            session["matched_sku"] = "ABC-141"
+            session["matched_name"] = "ABC-141 Smoky Grey River Shell Button"
+        elif "142" in lower_text or "turquoise" in lower_text or "teal" in lower_text:
+            session["matched_sku"] = "ABC-142"
+            session["matched_name"] = "ABC-142 Turquoise Blue Tinted Shell Button"
 
-        if is_order_inquiry:
-            # Determine selected SKU
-            target_sku = "ABC-136"
-            opt_label = "Option 1"
-            if "option 1" in lower_text or "136" in lower_text or "agoya" in lower_text:
-                target_sku = "ABC-136"
-                opt_label = "Option 1"
-            elif "option 2" in lower_text or "139" in lower_text or "river" in lower_text:
-                target_sku = "ABC-139"
-                opt_label = "Option 2"
-            elif "option 3" in lower_text or "137" in lower_text or "caramel" in lower_text or "gold" in lower_text:
-                target_sku = "ABC-137"
-                opt_label = "Option 3"
-            elif "141" in lower_text or "smoky" in lower_text:
-                target_sku = "ABC-141"
-                opt_label = "Option 4"
-            elif "142" in lower_text or "turquoise" in lower_text or "teal" in lower_text:
-                target_sku = "ABC-142"
-                opt_label = "Option 5"
-
-            # Determine accurate quantity in Gross
+        # If quantity stated in this message -> record in session
+        if has_qty_in_msg:
             if gross_match:
-                qty_gross = int(gross_match.group(1))
+                session["quantity"] = int(gross_match.group(1))
             elif pcs_match:
-                qty_gross = max(1, round(int(pcs_match.group(1)) / 144))
+                session["quantity"] = max(1, round(int(pcs_match.group(1)) / 144))
             elif general_num:
                 val = int(general_num.group(1))
-                qty_gross = round(val / 144) if val > 1000 else val
+                session["quantity"] = round(val / 144) if val > 1000 else val
+
+            # Check Situations:
+            if session.get("has_photo"):
+                # Situation 2: Customer has shared photo and quantity
+                reply = "Ji sir, aapki requirement samajh aa gayi hai. Hum iske according quotation check karte hain."
+                send_whatsapp_text(from_phone, reply)
+                return
             else:
-                qty_gross = 200  # standard B2B sample production batch
-
-            item = get_item_by_sku(target_sku) or SAMPLE_CATALOG[0]
-            print(f"📦 Order Requirement for {from_phone}: SKU={target_sku} | Qty={qty_gross} Gross")
-
-            # NO PRICING from AI! Confirm stock and register requirement for sales team to give commercial quote
-            confirm_msg = (
-                f"Ji {salutation}, bilkul! {opt_label} ({item['name']}) ka {qty_gross} Gross hamare godown me ready stock uplabdh hai.\n\n"
-                f"Aapki {qty_gross} Gross ki requirement hamare sales desk par note kar li gayi hai. Best commercial bulk rate aur formal quotation ke liye hamari sales team aapse turant connect karegi.\n\n"
-                f"Kripya apni company / firm ka naam aur delivery location bata dijiye sir."
-            )
-            send_whatsapp_text(from_phone, confirm_msg)
-            return
+                # Situation 3: Customer has shared quantity but not product design
+                reply = "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
+                send_whatsapp_text(from_phone, reply)
+                return
 
         # Sub-Case B: Address Provided by Buyer
         if any(w in lower_text for w in ["plot", "sector", "phase", "road", "gali", "noida", "gurgaon", "okhla", "delhi", "pin", "near"]):
+            session["has_address"] = True
             send_whatsapp_text(
                 from_phone,
                 f"Ji dhanyawad {salutation}! Delivery address note kar liya hai.\n"
@@ -270,25 +269,75 @@ async def process_incoming_whatsapp_message(value_data: dict):
                 )
             return
             
-        # Pricing / Quotation general inquiry
+        # Sub-Case D: Rate / Pricing Inquiry
         elif any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav", "paisa", "kitne ka", "charges"]):
-            rate_reply = (
-                "Ji sir, button ka rate uske design, quality aur quantity par depend karta hai.\n\n"
-                "Aap button ki photo ya design share kar dijiye. Saath hi batayein, aapko kitni quantity chahiye?\n\n"
-                "Hum aapko uske according best rate aur quotation bata denge."
+            if session.get("has_photo") and session.get("quantity"):
+                send_whatsapp_text(
+                    from_phone,
+                    "Ji sir, aapki requirement samajh aa gayi hai. Hum iske according quotation check karte hain."
+                )
+            elif session.get("has_photo") and not session.get("quantity"):
+                # Situation 1: Has photo, no quantity
+                send_whatsapp_text(
+                    from_phone,
+                    "Ji sir, aapka sample identify ho gaya hai. Aapko kitni quantity chahiye?"
+                )
+            elif not session.get("has_photo") and session.get("quantity"):
+                # Situation 3: Has quantity, no photo
+                send_whatsapp_text(
+                    from_phone,
+                    "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
+                )
+            else:
+                # Neither shared
+                rate_reply = (
+                    "Ji sir, button ka rate uske design, quality aur quantity par depend karta hai.\n\n"
+                    "Aap button ki photo ya design share kar dijiye. Saath hi batayein, aapko kitni quantity chahiye?\n\n"
+                    "Hum aapko uske according best rate aur quotation bata denge."
+                )
+                send_whatsapp_text(from_phone, rate_reply)
+            return
+
+        # Sub-Case E: Courtesy & Acknowledgement (ok, thanks, theek hai, done)
+        elif any(lower_text.strip() == w for w in [
+            "ok", "okay", "ok ji", "theek hai", "thik hai", "thanks", "thank you", 
+            "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
+            "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h"
+        ]):
+            send_whatsapp_text(
+                from_phone,
+                f"Ji bilkul {salutation}! Jaise hi parcel dispatch hota hai, tracking / docket details aapse share kar denge. Koi bhi nayi requirement ho toh zaroor batayein sir. 🙏"
             )
-            send_whatsapp_text(from_phone, rate_reply)
             return
             
-        # General greeting / assistance
+        # Sub-Case F: General greeting / assistance
         else:
-            welcome_msg = (
-                "Namaste! ABC Buttons mein aapka swagat hai.\n\n"
-                "Garments ke liye kisi bhi type ke buttons chahiye hon, toh aap button ki photo or design yahan share kar sakte hain.\n\n"
-                "Hum aapko available stock & suitable options check karke bata denge.\n\n"
-                "Batayein sir, aapko kis type ke buttons chahiye?"
-            )
-            send_whatsapp_text(from_phone, welcome_msg)
+            # Rule 4: Conversation Continuity (Never restart or send generic welcome in middle of ongoing chat!)
+            if session.get("has_photo") or session.get("quantity") or session.get("history_count", 0) > 1:
+                if session.get("has_photo") and not session.get("quantity"):
+                    send_whatsapp_text(
+                        from_phone,
+                        "Ji sir, aapka sample identify ho gaya hai. Aapko kitni quantity chahiye?"
+                    )
+                elif not session.get("has_photo") and session.get("quantity"):
+                    send_whatsapp_text(
+                        from_phone,
+                        "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
+                    )
+                else:
+                    send_whatsapp_text(
+                        from_phone,
+                        f"Ji {salutation}, batayein sir, aage kya update hai?"
+                    )
+            else:
+                # Brand new customer first-time greeting
+                welcome_msg = (
+                    "Namaste! ABC Buttons mein aapka swagat hai.\n\n"
+                    "Garments ke liye kisi bhi type ke buttons chahiye hon, toh aap button ki photo or design yahan share kar sakte hain.\n\n"
+                    "Hum aapko available stock & suitable options check karke bata denge.\n\n"
+                    "Batayein sir, aapko kis type ke buttons chahiye?"
+                )
+                send_whatsapp_text(from_phone, welcome_msg)
 
 # ----------------- WEBHOOK ENDPOINTS -----------------
 
@@ -297,21 +346,18 @@ def home():
     return {
         "status": "online",
         "service": "ABC Buttons 24/7 WhatsApp AI Bot",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "features": [
+            "Customer Context Awareness",
+            "No Repetition Rule",
+            "One Question at a Time",
             "Automatic Buyer Photo Scan",
-            "Instant Best Match Image Dispatch",
-            "2-3 Alternative Options with Images & Gross Stock",
-            "Auto Sample Card & Rate Assistant"
+            "Stock Verification & Rate Assistant"
         ]
     }
 
 @app.get("/webhook")
 def verify_webhook(request: Request):
-    """
-    Verification endpoint required by Meta Developers Portal.
-    Checks hub.verify_token and returns hub.challenge.
-    """
     params = request.query_params
     mode = params.get("hub.mode")
     token = params.get("hub.verify_token")
@@ -326,10 +372,6 @@ def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
-    """
-    Receives live events from Meta WhatsApp Cloud API.
-    Awaits payload, schedules processing in background, and immediately returns 200 OK.
-    """
     try:
         payload = await request.json()
         import datetime
@@ -349,7 +391,14 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         
     return JSONResponse(content={"status": "received"}, status_code=200)
 
+@app.get("/history")
+def get_history():
+    return {
+        "total_events": len(received_events),
+        "recent_events": received_events[-10:]
+    }
+
 if __name__ == "__main__":
+    import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    print(f"🚀 Starting ABC Buttons Webhook Bot on port {port}...")
     uvicorn.run("webhook_bot:app", host="0.0.0.0", port=port, reload=False)
