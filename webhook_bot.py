@@ -306,6 +306,18 @@ async def process_incoming_whatsapp_message(value_data: dict):
                 f"Aap button ki photo ya required quantity (Gross) share karein, hum turant best factory rate aur proforma quote bana kar bhej denge sir."
             )
             return
+
+        # Courtesy & Acknowledgement (ok, thanks, theek hai, done)
+        elif any(lower_text.strip() == w for w in [
+            "ok", "okay", "ok ji", "theek hai", "thik hai", "thanks", "thank you", 
+            "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
+            "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h"
+        ]):
+            send_whatsapp_text(
+                from_phone,
+                f"Ji bilkul {salutation}! Jaise hi parcel dispatch hota hai, tracking / docket details aapse share kar denge. Koi bhi nayi requirement ho toh zaroor batayein sir. 🙏"
+            )
+            return
             
         # General greeting / assistance
         else:
