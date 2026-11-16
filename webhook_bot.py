@@ -484,6 +484,33 @@ async def process_incoming_whatsapp_message(value: dict):
             send_whatsapp_text(from_phone, dtm_msg)
             return
 
+        # SECTION 18.5: BUYER ASKS FOR UPDATE / EXPECTED RESPONSE TIME
+        if any(w in lower_text for w in [
+            "kab tak batayenge", "batayenge kab", "any update", "update please", 
+            "please update", "update me", "expect the quotation", "when can i expect", 
+            "team confirm", "kya hua", "bheja nahi", "kuch update", "update batao", 
+            "kitna time lagega batane", "response time", "reply nahi aaya", "update?",
+            "how much time will it take"
+        ]) or (any(w in lower_text for w in ["kab tak", "kitna time", "when will"]) and any(q in lower_text for q in ["quotation", "rate", "sample", "quote", "batao", "confirm", "reply"])):
+            if session.get("has_address"):
+                upd_msg = (
+                    f"Ji {salutation}, aapka sample dispatch request note kar liya gaya hai. "
+                    f"Hamari Sales Team dispatch coordination ke sath jald hi aapse tracking details share karegi."
+                )
+            elif session.get("quantity") or session.get("matched_sku"):
+                sku_txt = f" ({session.get('matched_sku')})" if session.get('matched_sku') else ""
+                upd_msg = (
+                    f"Ji {salutation}, aapki requirement{sku_txt} ke liye stock aur quotation details hamari Sales Team review kar rahi hai. "
+                    f"Team jald hi aapse final quotation ke sath sampark karegi."
+                )
+            else:
+                upd_msg = (
+                    f"Ji {salutation}, aapki enquiry Sales Team ko forward kar di gayi hai. "
+                    f"Team details check karke aapse sampark karegi."
+                )
+            send_whatsapp_text(from_phone, upd_msg)
+            return
+
         # RULE 2.2: DISPATCH & DYEING LEAD TIME
         if any(w in lower_text for w in ["lead time", "timeline", "kitne din", "kab tak", "dispatch time", "delivery time", "urgent", "kitna time", "kab milega", "delivery kab"]):
             lead_msg = (
@@ -553,7 +580,7 @@ async def process_incoming_whatsapp_message(value: dict):
             send_whatsapp_text(
                 from_phone,
                 f"Ji dhanyawad {salutation}! Delivery address note kar liya hai.\n"
-                f"Hamari dispatch team required samples arrange karke Courier To-Pay par nikalwa degi aur tracking details aapse share kar denge sir."
+                f"Hamari dispatch team required samples arrange karke sales & dispatch team coordination ke sath aapse tracking details share kar degi sir."
             )
             return
 
