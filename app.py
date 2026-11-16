@@ -69,7 +69,7 @@ def generate_quotation_pdf(buyer_name, buyer_gst, item_sku, item_name, item_size
         text_content = f"""====================================================
                ABC BUTTONS PVT. LTD.
    Manufacturers & Exporters of Natural & Customized Buttons
-   Works: Okhla Phase-II | Regd: Govindpuri / Kalkaji, New Delhi
+   Works & Regd Office: Govindpuri / Kalkaji, New Delhi - 110019
    GSTIN: 07AABCA9876P1Z3 | Contact: +91 9310722777
 ====================================================
 PROFORMA QUOTATION
@@ -79,7 +79,7 @@ BILL TO:
 Buyer: {buyer_name}
 GSTIN: {buyer_gst}
 Payment Terms: 30 Days Credit
-Delivery: 3-5 Working Days from Okhla Godown
+Delivery: 3-5 Working Days from Central Godown, New Delhi
 
 ----------------------------------------------------
 ITEM DETAILS:
@@ -116,7 +116,7 @@ IFSC Code:  HDFC0000123
     sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor('#475569'))
     
     story.append(Paragraph('ABC BUTTONS PVT. LTD.', title_style))
-    story.append(Paragraph('Manufacturers & Exporters of Natural & Customized Buttons<br/>Works: Okhla Industrial Area Phase-II | Regd Office: Govindpuri / Kalkaji, New Delhi - 110019<br/>GSTIN: 07AABCA9876P1Z3 | Phone: +91 9310722777 | Email: sales@abcbuttons.com', sub_style))
+    story.append(Paragraph('Manufacturers & Exporters of Natural & Customized Buttons<br/>Works & Regd Office: Govindpuri / Kalkaji, New Delhi - 110019<br/>GSTIN: 07AABCA9876P1Z3 | Phone: +91 9310722777 | Email: sales@abcbuttons.com', sub_style))
     story.append(Spacer(1, 8))
     story.append(HRFlowable(width='100%', thickness=2, color=colors.HexColor('#2563eb'), spaceAfter=12))
 
@@ -247,53 +247,348 @@ def save_persistent_data():
     except Exception:
         pass
 
-# Custom Styling for Premium B2B feel
+# ==============================================================================
+# SAMPLE 4: "QUICK-DESK RAPID BILLING" (KHATABOOK PRO / TALLY CLOUD B2B STYLE)
+# ==============================================================================
 st.markdown("""
 <style>
-    .main-header {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        color: white;
-        padding: 24px;
-        border-radius: 12px;
-        margin-bottom: 25px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    /* Google Fonts Import */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap');
+
+    /* Global Typography Defaults */
+    html, body, [class*="css"], .stMarkdown, p, span, label {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
-    .card-box {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 18px;
-        margin-bottom: 15px;
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
+        letter-spacing: -0.015em;
+    }
+
+    /* Quick-Desk Command Header (Teal & Navy Modern FinTech) */
+    .quickdesk-header-container {
+        background: linear-gradient(135deg, #0F172A 0%, #115E59 55%, #0F766E 100%);
+        border: 1px solid rgba(20, 184, 166, 0.3);
+        border-bottom: 3.5px solid #0D9488;
+        border-radius: 14px;
+        padding: 20px 26px;
+        margin-bottom: 22px;
+        box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2), 0 0 15px rgba(13, 148, 136, 0.12);
+    }
+    .header-top-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+    .brand-group {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .brand-seal-badge {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #FFFFFF;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800;
+        font-size: 20px;
+        letter-spacing: 0.5px;
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35);
+        border: 1.5px solid rgba(255, 255, 255, 0.3);
+    }
+    .brand-title {
+        margin: 0;
+        font-size: 23px;
+        font-weight: 800;
+        color: #F8FAFC;
+        letter-spacing: 0.3px;
+    }
+    .brand-subtitle {
+        margin: 4px 0 0 0;
+        color: #CCFBF1;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .badge-teal-tag {
+        background: rgba(20, 184, 166, 0.2);
+        color: #5EEAD4;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        border: 1px solid rgba(94, 234, 212, 0.3);
+        letter-spacing: 0.5px;
+    }
+    .status-pills-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .status-pill {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 6px 14px;
+        border-radius: 9999px;
+        font-size: 12.5px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        backdrop-filter: blur(4px);
+    }
+    .pulse-dot {
+        width: 8px;
+        height: 8px;
+        background-color: #2DD4BF;
+        border-radius: 50%;
+        box-shadow: 0 0 8px #2DD4BF;
+        display: inline-block;
+    }
+
+    /* Segmented Quick-Desk Pill Tabs */
+    div[data-baseweb="tab-list"] {
+        background: #F1F5F9 !important;
+        padding: 6px 8px !important;
+        border-radius: 12px !important;
+        border: 1px solid #E2E8F0 !important;
+        gap: 6px !important;
+        margin-bottom: 22px !important;
+    }
+    button[data-baseweb="tab"] {
+        border-radius: 8px !important;
+        border: none !important;
+        padding: 8px 16px !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
+        color: #475569 !important;
+        background: transparent !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    button[data-baseweb="tab"]:hover {
+        background: #E2E8F0 !important;
+        color: #0F172A !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background: linear-gradient(135deg, #0F766E 0%, #0D9488 100%) !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25) !important;
+        border-bottom: 2px solid #5EEAD4 !important;
+    }
+
+    /* Clean Card Containers */
+    .quick-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 18px;
+        box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.04);
+    }
+    .spec-badge {
+        font-family: 'Inter', sans-serif;
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: #0F766E;
+        background: #F0FDFA;
+        border: 1px solid #CCFBF1;
+        padding: 3px 8px;
+        border-radius: 6px;
     }
     .gross-badge {
-        background-color: #f0fdf4;
-        color: #166534;
+        background-color: #F0FDFA;
+        color: #0F766E;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 13.5px;
+        border: 1px solid #99F6E4;
+        display: inline-block;
+        box-shadow: 0 1px 3px rgba(13, 148, 136, 0.08);
+    }
+
+    /* Quick-Desk Proforma Invoice Canvas */
+    .proforma-canvas {
+        background: #FFFFFF;
+        border: 1.5px solid #CCFBF1;
+        border-top: 4px solid #0D9488;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 10px 25px -5px rgba(13, 148, 136, 0.08);
+        position: relative;
+    }
+    .proforma-header-bar {
+        border-bottom: 2px solid #0F766E;
+        padding-bottom: 12px;
+        margin-bottom: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+    .proforma-brand {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800;
+        font-size: 21px;
+        color: #0F172A;
+        letter-spacing: 0.3px;
+        margin: 0;
+    }
+    .proforma-brand-sub {
+        color: #64748B;
+        font-size: 12px;
+        margin-top: 3px;
+    }
+    .proforma-ref-badge {
+        background: #0F766E;
+        color: #FFFFFF;
         padding: 4px 10px;
         border-radius: 6px;
+        font-size: 12px;
         font-weight: 700;
+        letter-spacing: 0.5px;
+        border: 1px solid #0D9488;
+    }
+    .proforma-table {
+        width: 100%;
         font-size: 13px;
-        border: 1px solid #bbf7d0;
+        border-collapse: collapse;
+        margin-bottom: 16px;
+    }
+    .proforma-table th {
+        background: #0F172A;
+        color: #FFFFFF;
+        font-weight: 700;
+        padding: 9px 10px;
+        font-size: 12.5px;
+        letter-spacing: 0.3px;
+    }
+    .proforma-table td {
+        padding: 10px;
+        border-bottom: 1px solid #E2E8F0;
+    }
+    .proforma-total-box {
+        background: #F8FAFC;
+        border: 1.5px solid #CCFBF1;
+        border-radius: 10px;
+        padding: 14px 18px;
+        text-align: right;
+    }
+    .proforma-grand-total {
+        font-family: 'Outfit', sans-serif;
+        font-size: 22px;
+        font-weight: 800;
+        color: #0F766E;
+        margin: 8px 0 0 0;
+        border-top: 2px solid #0F766E;
+        padding-top: 8px;
+    }
+
+    /* Refined Luxury Form Controls */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div {
+        border-radius: 9px !important;
+        border: 1.5px solid #CBD5E1 !important;
+        background-color: #FFFFFF !important;
+        transition: all 0.2s ease !important;
+    }
+    div[data-baseweb="input"] > div:focus-within,
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: #0D9488 !important;
+        box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12) !important;
+    }
+    label[data-testid="stWidgetLabel"] p {
+        font-weight: 600 !important;
+        color: #1E293B !important;
+        font-size: 13.5px !important;
+        letter-spacing: -0.01em !important;
+    }
+    div[data-testid="stRadio"] > div {
+        background: #F8FAFC !important;
+        padding: 8px 14px !important;
+        border-radius: 10px !important;
+        border: 1px solid #E2E8F0 !important;
+        gap: 12px !important;
+    }
+    div[data-testid="stRadio"] label {
+        font-weight: 600 !important;
+        font-size: 13px !important;
+        color: #334155 !important;
+    }
+
+    /* Buttons: Primary Quick-Desk Teal Gradient */
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%) !important;
+        border: 1px solid #0D9488 !important;
+        color: #FFFFFF !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-weight: 700 !important;
+        border-radius: 9px !important;
+        padding: 10px 22px !important;
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25) !important;
+        transition: all 0.2s ease !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%) !important;
+        border-color: #2DD4BF !important;
+        box-shadow: 0 6px 16px rgba(13, 148, 136, 0.35) !important;
+        transform: translateY(-1px);
+    }
+    div.stButton > button[kind="secondary"] {
+        border-radius: 9px !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-weight: 600 !important;
+        border: 1.5px solid #CBD5E1 !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# App Header
+# Quick-Desk Executive Header (Strictly NO Okhla)
 st.markdown("""
-<div class="main-header">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-            <h1 style="margin: 0; font-size: 28px; color: #f8fafc;">🔘 Button-Mitra AI</h1>
-            <p style="margin: 5px 0 0 0; color: #94a3b8; font-size: 15px;">
-                Autonomous Merchandising & Sales Agent for <b>ABC Buttons Private Limited</b> (Kalkaji / Okhla, New Delhi)
-            </p>
+<div class="quickdesk-header-container">
+    <div class="header-top-row">
+        <div class="brand-group">
+            <div class="brand-seal-badge">
+                ABC
+            </div>
+            <div>
+                <h1 class="brand-title">ABC BUTTONS PRIVATE LIMITED</h1>
+                <div class="brand-subtitle">
+                    <span class="badge-teal-tag">⚡ RAPID BILLING DESK</span>
+                    <span>Garment Buttons &amp; Export Accessories</span>
+                    <span>•</span>
+                    <span>Govindpuri / Kalkaji, New Delhi - 110019</span>
+                </div>
+            </div>
         </div>
-        <div style="text-align: right; background: rgba(255,255,255,0.08); padding: 8px 16px; border-radius: 8px;">
-            <span style="color: #4ade80; font-size: 13px; font-weight: 700;">🟢 ABC-136 to ABC-143 Real Shell Series Active</span><br>
-            <small style="color: #cbd5e1;">All Rates & Stock strictly in GROSS (1 Gr = 144 Pcs)</small>
+        <div class="status-pills-row">
+            <div class="status-pill" style="color: #5EEAD4;">
+                <span class="pulse-dot"></span>
+                <span>Meta WhatsApp Cloud API: <b>Active (60-Day)</b></span>
+            </div>
+            <div class="status-pill" style="color: #FEF08A;">
+                <span>📦</span>
+                <span>Ready Stock: <b>18,450 Gross</b></span>
+            </div>
+            <div class="status-pill" style="color: #93C5FD;">
+                <span>⚡</span>
+                <span>Vision Matcher: <b>100% Calibrated</b></span>
+            </div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
+
 
 persisted = load_persistent_data()
 
@@ -974,48 +1269,88 @@ with tabs[4]:
         discount_html = f"""<p style="margin: 4px 0; color: #16a34a; font-size: 13.5px;"><b>Less: Volume Discount ({q_discount}%):</b> <span style="font-weight: 700;">- ₹{discount_amount:,.2f}</span></p>""" if q_discount > 0 else ""
         
         st.markdown(f"""
-        <div style="background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 12px; padding: 20px;">
-            <div style="border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
-                <h3 style="margin: 0; color: #0f172a;">ABC BUTTONS PRIVATE LIMITED</h3>
-                <small style="color: #64748b;">Govindpuri / Kalkaji, New Delhi - 110019 | GSTIN: 07AABCA9876P1Z3</small>
+        <div class="proforma-canvas">
+            <div class="proforma-header-bar">
+                <div>
+                    <h3 class="proforma-brand">ABC BUTTONS PRIVATE LIMITED</h3>
+                    <div class="proforma-brand-sub">
+                        Govindpuri / Kalkaji, New Delhi - 110019 &nbsp;|&nbsp; GSTIN: 07AABCA9876P1Z3
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <span class="proforma-ref-badge">Ref: ABC-QT-2026</span>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 4px; font-weight: 600;">EXECUTIVE ATELIER</div>
+                </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="font-weight: 700; color: #1e293b;">PROFORMA QUOTATION / RATE ESTIMATE</span>
-                <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">Ref: ABC-QT-2026</span>
+            
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; background: #F8FAFC; padding: 10px 14px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                <div style="font-size: 13px; color: #334155;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Billed To</span><br>
+                    <b style="color: #0F172A; font-size: 14px;">{q_buyer}</b><br>
+                    <span style="color: #64748B;">GSTIN:</span> <span style="font-family: 'JetBrains Mono', monospace; font-weight: 600;">{q_gst}</span>
+                </div>
+                <div style="text-align: right; font-size: 12.5px; color: #475569;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">Terms & Dates</span><br>
+                    <span>Date: <b>{today_str}</b></span><br>
+                    <span>Valid Till: <b>{valid_str}</b></span>
+                </div>
             </div>
-            <p style="font-size: 13px; color: #475569; margin-bottom: 12px;">
-                <b>Bill To:</b> {q_buyer}<br>
-                <b>GSTIN:</b> {q_gst}<br>
-                <b>Date:</b> {today_str} | <b>Valid Till:</b> {valid_str}
-            </p>
-            <table style="width: 100%; font-size: 13px; border-collapse: collapse; margin-bottom: 15px;">
-                <tr style="background: #1e293b; color: #ffffff; font-weight: 700;">
-                    <td style="padding: 8px;">Item Description</td>
-                    <td style="padding: 8px; text-align: center;">Qty (Gross)</td>
-                    <td style="padding: 8px; text-align: right;">Base Rate / Gr</td>
-                    <td style="padding: 8px; text-align: right;">Gross Amount</td>
-                </tr>
-                <tr style="border-bottom: 1px solid #cbd5e1; background: #ffffff;">
-                    <td style="padding: 8px;"><b>{curr_item['name']}</b><br><small style="color: #64748b;">SKU: {curr_item['sku']} • Size: {curr_item.get('size_ligne', '')} • {curr_item.get('holes', '')}</small></td>
-                    <td style="padding: 8px; text-align: center; font-weight: 700;">{q_gross_qty} Gr<br><small style="color: #64748b;">({q_gross_qty*144:,} pcs)</small></td>
-                    <td style="padding: 8px; text-align: right;">₹{base_rate:.2f} / Gr</td>
-                    <td style="padding: 8px; text-align: right; font-weight: 700;">₹{gross_amount:,.2f}</td>
-                </tr>
+
+            <table class="proforma-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: left; border-top-left-radius: 8px;">Item Description</th>
+                        <th style="text-align: center;">Qty (Gross)</th>
+                        <th style="text-align: right;">Base Rate / Gr</th>
+                        <th style="text-align: right; border-top-right-radius: 8px;">Gross Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="background: #FFFFFF;">
+                        <td>
+                            <b style="color: #0F172A; font-size: 13.5px;">{curr_item['name']}</b><br>
+                            <span class="spec-badge">SKU: {curr_item['sku']}</span>
+                            <span class="spec-badge">SIZE: {curr_item.get('size_ligne', '')}</span>
+                            <span class="spec-badge">{curr_item.get('holes', '')}</span>
+                        </td>
+                        <td style="text-align: center;">
+                            <span style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #0F172A;">{q_gross_qty} Gr</span><br>
+                            <small style="color: #64748B;">({q_gross_qty*144:,} pcs)</small>
+                        </td>
+                        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #334155;">
+                            ₹{base_rate:.2f}
+                        </td>
+                        <td style="text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #0F172A;">
+                            ₹{gross_amount:,.2f}
+                        </td>
+                    </tr>
+                </tbody>
             </table>
-            <div style="text-align: right; font-size: 13.5px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
-                <p style="margin: 4px 0; color: #475569;">Gross Total: <b>₹{gross_amount:,.2f}</b></p>
+
+            <div class="proforma-total-box">
+                <div style="display: flex; justify-content: space-between; font-size: 13.5px; color: #475569; margin-bottom: 4px;">
+                    <span>Gross Total:</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 600;">₹{gross_amount:,.2f}</span>
+                </div>
                 {discount_html}
-                <p style="margin: 4px 0; color: #0f172a; border-top: 1px dashed #cbd5e1; padding-top: 4px;">Taxable Subtotal: <b>₹{taxable_subtotal:,.2f}</b> {f'<small style="color: #16a34a; font-weight: 600;">(Effective Net: ₹{effective_rate:.2f}/Gr)</small>' if q_discount > 0 else ''}</p>
-                <p style="margin: 4px 0; color: #475569;">GST @ 12%: <b>₹{gst_amount:,.2f}</b></p>
-                <h4 style="margin: 8px 0 0 0; color: #0f172a; font-size: 18px; border-top: 2px solid #0f172a; padding-top: 6px;">Total Payable: ₹{grand_total:,.2f}</h4>
+                <div style="display: flex; justify-content: space-between; font-size: 13.5px; color: #0F172A; border-top: 1px dashed #CBD5E1; padding-top: 6px; margin-top: 4px;">
+                    <span>Taxable Subtotal {f'<small style="color: #16A34A; font-weight: 600;">(Net: ₹{effective_rate:.2f}/Gr)</small>' if q_discount > 0 else ''}:</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700;">₹{taxable_subtotal:,.2f}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 13.5px; color: #475569; margin-top: 4px;">
+                    <span>GST @ 12%:</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 600;">₹{gst_amount:,.2f}</span>
+                </div>
+                <div class="proforma-grand-total" style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <span style="font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B;">Total Payable:</span>
+                    <span style="color: #0F172A; font-family: 'Outfit', sans-serif;">₹{grand_total:,.2f}</span>
+                </div>
             </div>
-            <hr style="margin: 12px 0;">
-            <small style="color: #64748b;">
-                • All billing strictly in Gross units (1 Gross = 144 Pieces)<br>
-                • Delivery Lead Time: 3-5 Working Days from Okhla Godown<br>
-                • Payment Terms: 30 Days Credit against Approved Purchase Order<br>
-                • Bank: HDFC Bank, Kalkaji Branch, A/C: 50200084920192, IFSC: HDFC0000123
-            </small>
+
+            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #E2E8F0; font-size: 11.5px; color: #64748B; line-height: 1.6;">
+                <div><b>Commercial Terms:</b> Billing strictly in Gross units (1 Gross = 144 Pieces) • Delivery: 3-5 Working Days from Central Godown, New Delhi • 30 Days Credit against Approved PO</div>
+                <div style="margin-top: 4px; color: #334155;"><b>Bank Transfer:</b> HDFC Bank, Kalkaji Branch • A/C: <b>50200084920192</b> • IFSC: <b>HDFC0000123</b></div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1300,7 +1635,7 @@ with tabs[6]:
                             if "whatsapp_buyer_draft" in jd:
                                 clean_text = jd["whatsapp_buyer_draft"]
                             else:
-                                clean_text = f"Namaste Sir! 🙏 17L standard button size nahi hota, garment industry me **18L (11.5 mm)** sabse popular standard size chalta hai.\n\nRecommended: **{jd.get('best_match_sku', 'ABC-136')}**\n{jd.get('match_reason', '')}\n\nSabhi rates strictly ₹ / Gross me hain aur Okhla me ready stock hai. Kya hum aapko iska Free Sample Card bhej dein?"
+                                clean_text = f"Namaste Sir! 🙏 17L standard button size nahi hota, garment industry me **18L (11.5 mm)** sabse popular standard size chalta hai.\n\nRecommended: **{jd.get('best_match_sku', 'ABC-136')}**\n{jd.get('match_reason', '')}\n\nSabhi rates strictly ₹ / Gross me hain aur Central Godown me ready stock hai. Kya hum aapko iska Free Sample Card bhej dein?"
                         except Exception:
                             pass
                     if msg["role"] == "user":
@@ -1425,7 +1760,7 @@ with tabs[6]:
                     </div>
                 </div>
                 <div style="font-size: 12px; background: rgba(255,255,255,0.18); padding: 4px 10px; border-radius: 4px;">
-                    Executive: Rahul (Okhla / Noida)
+                    Executive: Rahul (Delhi NCR / Noida)
                 </div>
             </div>
             """, unsafe_allow_html=True)

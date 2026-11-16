@@ -360,7 +360,7 @@ def generate_proforma_card_image(
 
     draw.text((x, y), "• All billing strictly in Gross units (1 Gross = 144 Pieces)", fill="#475569", font=font_small)
     y += 22
-    draw.text((x, y), "• Delivery Lead Time: Ready Ex-Stock, 24-48 hrs from Okhla Godown", fill="#475569", font=font_small)
+    draw.text((x, y), "• Delivery Lead Time: Ready Ex-Stock, 24-48 hrs from Central Godown, New Delhi", fill="#475569", font=font_small)
     y += 22
     draw.text((x, y), "• Bank Details: HDFC Bank, Kalkaji Branch | A/C: 50200084920192 | IFSC: HDFC0000123", fill="#1e40af", font=font_bold)
 
