@@ -68,7 +68,7 @@ def get_alternative_skus(best_sku: str, limit: int = 2):
 async def process_incoming_whatsapp_message(value: dict):
     """
     Stateful Customer Context Aware WhatsApp Message Handler.
-    Enforces One Question at a Time Rule, Never Asks Repeated Questions, and remembers all context.
+    Enforces ABC Buttons: Commercial, Sales & Customer Handling Rules (Rules 1.1 to 7.0).
     """
     contacts = value.get("contacts", [])
     contact_name = "Sir"
@@ -213,8 +213,8 @@ async def process_incoming_whatsapp_message(value: dict):
         # ---------------- STEP A: HANDLE SIMILAR PERMISSION RESPONSE ----------------
         if session.get("waiting_for_similar_permission"):
             # Check if customer agrees / gives permission (haan, yes, dikha do, bhejo, options, ok, sure, dikhao)
-            agrees = any(w in lower_text for w in ["haan", "yes", "dikha do", "bhejo", "options", "dikhao", "sure", "ok", "chalega", "dekhte", "send"]) and not any(w in lower_text for w in ["nahi", "no", "not", "mat", "sirf yahi", "wahi"])
-            rejects = any(w in lower_text for w in ["nahi", "no", "mat", "sirf yahi", "same design", "wahi chahiye", "nahi chahiye", "rehne do"])
+            agrees = any(w in lower_text for w in ["haan", "yes", "dikha do", "bhejo", "options", "dikhao", "sure", "ok", "chalega", "dekhte", "send"]) and not any(w in lower_text for w in ["nahi", "nahu", "no", "not", "mat", "sirf yahi", "wahi"])
+            rejects = any(w in lower_text for w in ["nahi", "nahu", "no", "not", "na", "mat", "sirf yahi", "same design", "wahi chahiye", "nahi chahiye", "rehne do", "koi nahi", "koi bhi nahi"])
             
             if agrees:
                 session["waiting_for_similar_permission"] = False
@@ -253,13 +253,15 @@ async def process_incoming_whatsapp_message(value: dict):
                 
             elif rejects:
                 session["waiting_for_similar_permission"] = False
-                # Rejection response: custom manufacturing or polite closure
+                session["waiting_for_custom_mfg_qty"] = True
+                # Rule 6.3: Exact Sample Rejection & Custom Manufacturing Rule
                 rejection_msg = (
-                    "Ji sir, bilkul samajh gaye. Yahi exact design hum factory se custom manufacture karwa sakte hain (Minimum order 500 Gross).\n\n"
-                    "Agar aapki bulk requirement ho toh batayein, hum factory se sampling start karwa denge. Thank you!"
+                    f"Ji {salutation}, koi baat nahi.\n\n"
+                    f"Agar hamare shared kiye gaye samples me aapko aapke original button jaisa exact design nahi mila, toh hum aapke diye hue sample ke according factory se same button custom develop karwane ki feasibility check kar sakte hain.\n\n"
+                    f"Sir, aapko approximately kitni quantity ki requirement hai? Hum aapki requirement apni Sales Team ko forward kar denge. Hamari Team aapse isi WhatsApp number par baat kar legi."
                 )
                 send_whatsapp_text(from_phone, rejection_msg)
-                print(f"📤 Buyer rejected similar options. Sent custom manufacture msg to {from_phone}")
+                print(f"📤 Buyer rejected similar permission. Offered custom mfg check without MOQ to {from_phone}")
                 return
 
         # ---------------- STEP B: HANDLE SIMILAR SELECTION APPROVAL ----------------
@@ -268,7 +270,7 @@ async def process_incoming_whatsapp_message(value: dict):
             rejection_keywords = [
                 "nahi", "nahu", "no", "not", "na", "mat", "koi bhi nahi", "koi nahi", 
                 "dono nahi", "isme se nahi", "rehne do", "kuch nahi", "cancel", "pasand nahi",
-                "alag chahiye", "same chahiye", "wahi chahiye", "ye nahi", "chhod do", "inme se koi"
+                "alag chahiye", "same chahiye", "wahi chahiye", "ye nahi", "chhod do", "inme se koi", "nahi chahiye"
             ]
             is_rejected = any(k in lower_text for k in rejection_keywords)
             
@@ -277,13 +279,11 @@ async def process_incoming_whatsapp_message(value: dict):
                 session["waiting_for_similar_permission"] = False
                 session["waiting_for_custom_mfg_qty"] = True
                 
-                # EXACT SAMPLE REJECTION & CUSTOM MANUFACTURING RULE (Rule 3, 4, 5, 6):
-                # Politely acknowledge rejection, offer custom manufacturing check, ask approx quantity.
-                # Strictly DO NOT mention MOQ, pricing or manufacturing charges at this stage.
+                # Rule 6.3: Exact Sample Rejection & Custom Manufacturing Rule
                 rejection_msg = (
                     f"Ji {salutation}, koi baat nahi.\n\n"
-                    f"Agar aapko aapke original sample ke according yahi exact button design custom manufacture karwana ho, toh hum factory feasibility check karwa sakte hain.\n\n"
-                    f"Aapko lagbhag kitni quantity ki requirement rahegi sir?"
+                    f"Agar hamare shared kiye gaye samples me aapko aapke original button jaisa exact design nahi mila, toh hum aapke diye hue sample ke according factory se same button custom develop karwane ki feasibility check kar sakte hain.\n\n"
+                    f"Sir, aapko approximately kitni quantity ki requirement hai? Hum aapki requirement apni Sales Team ko forward kar denge. Hamari Team aapse isi WhatsApp number par baat kar legi."
                 )
                 send_whatsapp_text(from_phone, rejection_msg)
                 print(f"📤 Customer rejected options. Offered custom mfg check and asked quantity without MOQ to {from_phone}")
@@ -310,7 +310,7 @@ async def process_incoming_whatsapp_message(value: dict):
                 print(f"📤 Customer approved {sel_item['sku']}. Asked for quantity.")
                 return
 
-                # ---------------- STEP C: HANDLE CUSTOM MANUFACTURING QUANTITY RESPONSE ----------------
+        # ---------------- STEP C: HANDLE CUSTOM MANUFACTURING QUANTITY RESPONSE ----------------
         if session.get("waiting_for_custom_mfg_qty"):
             rejection_keywords = ["nahi", "nahu", "no", "not", "cancel", "rehne do", "kuch nahi", "mat", "not interested"]
             if any(k in lower_text for k in rejection_keywords):
@@ -322,7 +322,6 @@ async def process_incoming_whatsapp_message(value: dict):
                 print(f"📤 Customer not interested in custom mfg. Politely closed conversation.")
                 return
                 
-            # If customer provided quantity (or mentions quantity)
             gross_m = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
             pcs_m = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
             num_m = re.search(r'(\d+)', lower_text)
@@ -332,7 +331,6 @@ async def process_incoming_whatsapp_message(value: dict):
                 session["quantity"] = qty_val
                 session["waiting_for_custom_mfg_qty"] = False
                 
-                # Rule 7, 8, 9, 10: Forward to sales team, confirm on same WhatsApp, do not guarantee until verified
                 forward_msg = (
                     f"Ji {salutation}, aapki lagbhag *{qty_val} Gross* requirement note kar li hai.\n\n"
                     f"Humne is sample ki manufacturing feasibility, MOQ aur best pricing confirmation ke liye sales team ko forward kar diya hai.\n\n"
@@ -342,10 +340,110 @@ async def process_incoming_whatsapp_message(value: dict):
                 print(f"📤 Forwarded custom mfg inquiry ({qty_val} Gross) to sales team for {from_phone}")
                 return
 
-        # Parse quantity if stated
+        # ---------------- SPECIFIC COMMERCIAL & CUSTOMER HANDLING RULES ----------------
+
+        # RULE 4.1 & 4.2: LOCATION & GODOWN / OFFICE VISIT SCHEDULING
+        if any(w in lower_text for w in [
+            "kahan hai", "kaha hai", "location", "address", "kahan par", "office visit", 
+            "godown visit", "aana chahta", "aake dekh", "milna chahta", "visit karna", 
+            "kahan aana", "office kahan", "godown kahan"
+        ]) and not any(w in lower_text for w in ["plot", "sector", "phase", "road", "gali", "pin", "deliver", "bhejo"]):
+            visit_msg = (
+                f"Ji {salutation}, aap hamare yahan samples dekhne ke liye saadar aamantrit hain.\n\n"
+                f"Hamara Central Godown aur Office *Govindpuri / Kalkaji, New Delhi - 110019* me sthit hai.\n\n"
+                f"Aap jab bhi visit karna chahein, kripya humein apni convenient date aur time bata dijiye. Hum pehle se apni Sales Team ko inform kar denge taaki aapke pahunchne par required samples taiyar milein."
+            )
+            send_whatsapp_text(from_phone, visit_msg)
+            return
+
+        # RULE 1.2: SMALL QUANTITY & RETAIL ENQUIRY HANDLING (10-20 pieces, 1-2 shirts)
+        small_qty_match = re.search(r'\b([1-9]|1[0-9]|20|25)\s*(?:piece|pieces|pcs|button|buttons|shirt|shirts)\b', lower_text)
+        if small_qty_match or any(phrase in lower_text for phrase in ["10 piece", "20 piece", "10 button", "20 button", "chhoti quantity", "1 shirt", "2 shirt", "few pieces"]):
+            small_qty_msg = (
+                f"Ji {salutation}, koi baat nahi. Aap humein apni required quantity bata dijiye. Hum apni Sales Team se availability confirm karwake aapko bata denge."
+            )
+            send_whatsapp_text(from_phone, small_qty_msg)
+            return
+
+        # RULE 2.1: CUSTOM DYEING & COLOUR MATCHING (DTM)
+        if any(w in lower_text for w in ["dyeing", "dtm", "colour match", "color match", "pantone", "fabric match", "shade match", "dyed", "colour karwana", "color karwana", "fabric swatch"]):
+            dtm_msg = (
+                f"Ji {salutation}, aapke Fabric Swatch ya Pantone Code ke according colour matching aur custom dyeing arrange karwane ka vikalp hai. "
+                f"Agar aap humse karwana chahein, toh hum aapki requirement apni Sales Team ko forward kar denge. Hamari Team aapse iski feasibility aur baaki details confirm kar legi."
+            )
+            send_whatsapp_text(from_phone, dtm_msg)
+            return
+
+        # RULE 2.2: DISPATCH & DYEING LEAD TIME
+        if any(w in lower_text for w in ["lead time", "timeline", "kitne din", "kab tak", "dispatch time", "delivery time", "urgent", "kitna time", "kab milega", "delivery kab"]):
+            lead_msg = (
+                f"Ji {salutation}, Ready Stock ka dispatch samanyatah 24-48 working hours me ho jata hai. "
+                f"Custom Dyeing me lagbhag 3-4 se 5-6 working days lag sakte hain. "
+                f"Aapki exact requirement ke anusar hamari Sales Team aapko sahi timeline confirm kar degi."
+            )
+            send_whatsapp_text(from_phone, lead_msg)
+            return
+
+        # RULE 3.2: CUSTOM MOULD / BRAND LOGO / LASER ENGRAVING
+        if any(w in lower_text for w in ["logo", "engrav", "laser", "brand name", "custom mould", "mould charge", "naam print", "brand logo"]):
+            logo_msg = (
+                f"Ji {salutation}, hum aapki requirement ke according logo/custom branding wale buttons ki feasibility check karwa sakte hain.\n\n"
+                f"Kripya apna logo vector file (.AI / .CDR / .PDF) aur required quantity share kar dijiye. Hamari Sales Team aapse aage ki details confirm kar legi."
+            )
+            send_whatsapp_text(from_phone, logo_msg)
+            return
+
+        # RULE 5.1: TESTING & EXPORT COMPLIANCE ENQUIRIES (OEKO-TEX, Lead-free, Nickel-free)
+        if any(w in lower_text for w in [
+            "oeko", "oeko-tex", "lead free", "lead-free", "nickel free", "nickel-free", 
+            "phthalate", "test report", "chemical test", "metal test", "washing standard", 
+            "export compliance", "certificate", "certification"
+        ]):
+            test_msg = (
+                f"Ji {salutation}, agar aapko buttons ke liye Lead-Free, Nickel-Free, Chemical Testing, Metal Testing ya kisi specific export compliance ki requirement hai, toh hum aapki baat apni Sales Team se karwa denge.\n\n"
+                f"Hamari Team sambandhit button ki specifications ke anusar aapko proper information aur availability confirm kar degi."
+            )
+            send_whatsapp_text(from_phone, test_msg)
+            return
+
+        # RULE 3.1: PHYSICAL SAMPLE / SAMPLE CARD DISPATCH
+        if any(w in lower_text for w in ["sample courier", "sample bhej", "sample card", "hanger card", "swatch", "sample chahiye", "cutting sample", "physical sample"]):
+            card_path = os.path.join(CAT_DIR, "ABC-SAMPLE-CARD-01.jpg")
+            sample_resp = (
+                f"Ji bilkul {salutation}, hum aapke approval ke liye required button samples arrange karwa sakte hain.\n\n"
+                f"Samples Courier To-Pay (Freight Collect) par bheje ja sakte hain. Kripya apna delivery address aur contact person ka naam share kar dijiye."
+            )
+            if os.path.exists(card_path):
+                with open(card_path, "rb") as cfp:
+                    card_bytes = cfp.read()
+                send_whatsapp_image(from_phone, card_bytes, sample_resp)
+            else:
+                send_whatsapp_text(from_phone, sample_resp)
+            return
+
+        # RULE 1.1: NO INSTANT PRICE QUOTATION
+        if any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav", "paisa", "kitne ka", "charges", "per gross", "discount"]):
+            price_msg = (
+                "Ji sir, hamare buttons ke rate aapki required quantity aur product specifications ke anusar alag-alag hote hain. "
+                "Hum aapki enquiry apni Sales Team ko forward kar denge. Hamari Sales Team aapse baat karke jald hi aapko best possible wholesale quotation share kar degi."
+            )
+            send_whatsapp_text(from_phone, price_msg)
+            return
+
+        # Sub-Case: Address Provided by Buyer
+        if any(w in lower_text for w in ["plot", "sector", "phase", "road", "gali", "noida", "gurgaon", "delhi", "pin", "near"]):
+            session["has_address"] = True
+            send_whatsapp_text(
+                from_phone,
+                f"Ji dhanyawad {salutation}! Delivery address note kar liya hai.\n"
+                f"Hamari dispatch team required samples arrange karke Courier To-Pay par nikalwa degi aur tracking details aapse share kar denge sir."
+            )
+            return
+
+        # Parse quantity if stated in message
         gross_match = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
         pcs_match = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
-        cleaned_for_num = re.sub(r'option\s*\d+', '', lower_text) # remove 'option 3'
+        cleaned_for_num = re.sub(r'option\s*\d+', '', lower_text)
         general_num = re.search(r'(\d+)', cleaned_for_num)
         
         has_qty_in_msg = bool(gross_match or pcs_match or (general_num and any(w in lower_text for w in ["gross", "order", "chahiye", "pack", "dispatch", "pcs", "pieces", "gr"])))
@@ -377,7 +475,6 @@ async def process_incoming_whatsapp_message(value: dict):
                 val = int(general_num.group(1))
                 session["quantity"] = round(val / 144) if val > 1000 else val
 
-            # Save latest inquiry for Tab 5 1-Click Auto-Fill
             try:
                 import datetime
                 ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
@@ -396,84 +493,21 @@ async def process_incoming_whatsapp_message(value: dict):
             except Exception as e:
                 print(f"Error saving latest inquiry: {e}")
 
-            # Check Situations:
             if session.get("has_photo"):
-                # Situation 2: Customer has shared photo and quantity
                 reply = "Ji sir, aapki requirement samajh aa gayi hai. Hum iske according quotation check karte hain."
                 send_whatsapp_text(from_phone, reply)
                 return
             else:
-                # Situation 3: Customer has shared quantity but not product design
                 reply = "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
                 send_whatsapp_text(from_phone, reply)
                 return
 
-        # Sub-Case B: Address Provided by Buyer
-        if any(w in lower_text for w in ["plot", "sector", "phase", "road", "gali", "noida", "gurgaon", "okhla", "delhi", "pin", "near"]):
-            session["has_address"] = True
-            send_whatsapp_text(
-                from_phone,
-                f"Ji dhanyawad {salutation}! Delivery address note kar liya hai.\n"
-                f"Hamari dispatch team aaj hi sample hanger card courier me nikalwa degi aur tracking details aapse share kar denge sir."
-            )
-            return
-
-        # Sub-Case C: Sample card inquiry
-        if any(w in lower_text for w in ["sample", "card", "hanger", "swatch", "trial", "pcs"]):
-            card_path = os.path.join(CAT_DIR, "ABC-SAMPLE-CARD-01.jpg")
-            if os.path.exists(card_path):
-                with open(card_path, "rb") as cfp:
-                    card_bytes = cfp.read()
-                card_caption = (
-                    f"📦 *ABC Buttons Official Shell Button Sample Hanger Card*\n"
-                    f"Isme 14L se 24L tak ke running River Shell, MOP, Agoya aur Trocas ke samples lage hue hain.\n\n"
-                    f"Ji {salutation}, aap factory ya office ka delivery address aur pin code share kar dijiye, hum aaj hi sample card courier dispatch karwa denge sir."
-                )
-                send_whatsapp_image(from_phone, card_bytes, card_caption)
-            else:
-                send_whatsapp_text(
-                    from_phone,
-                    f"Ji {salutation}, hamara full range sample card bilkul ready hai. "
-                    f"Kripya factory delivery address aur pin code share kar dijiye, hum aaj hi courier dispatch karwa denge sir."
-                )
-            return
-            
-        # Sub-Case D: Rate / Pricing Inquiry
-        elif any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav", "paisa", "kitne ka", "charges"]):
-            if session.get("has_photo") and session.get("quantity"):
-                send_whatsapp_text(
-                    from_phone,
-                    "Ji sir, aapki requirement samajh aa gayi hai. Hum iske according quotation check karte hain."
-                )
-            elif session.get("has_photo") and not session.get("quantity"):
-                # Situation 1: Has photo, no quantity
-                send_whatsapp_text(
-                    from_phone,
-                    "Ji sir, aapka sample identify ho gaya hai. Aapko kitni quantity chahiye?"
-                )
-            elif not session.get("has_photo") and session.get("quantity"):
-                # Situation 3: Has quantity, no photo
-                send_whatsapp_text(
-                    from_phone,
-                    "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
-                )
-            else:
-                # Neither shared
-                rate_reply = (
-                    "Ji sir, button ka rate uske design, quality aur quantity par depend karta hai.\n\n"
-                    "Aap button ki photo ya design share kar dijiye. Saath hi batayein, aapko kitni quantity chahiye?\n\n"
-                    "Hum aapko uske according best rate aur quotation bata denge."
-                )
-                send_whatsapp_text(from_phone, rate_reply)
-            return
-
-        # Sub-Case E: Courtesy & Acknowledgement (Order Status & Dispatch Rule)
+        # Courtesy & Acknowledgement
         elif any(lower_text.strip() == w for w in [
             "ok", "okay", "ok ji", "theek hai", "thik hai", "thanks", "thank you", 
             "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
             "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h"
         ]):
-            # Maintain context of actual stage - Never assume order confirmed or promise dispatch on 'OK'!
             if session.get("has_address") and not session.get("quantity"):
                 send_whatsapp_text(
                     from_phone,
@@ -491,9 +525,8 @@ async def process_incoming_whatsapp_message(value: dict):
                 )
             return
             
-        # Sub-Case F: General greeting / assistance
+        # General greeting / assistance
         else:
-            # Rule 4: Conversation Continuity (Never restart or send generic welcome in middle of ongoing chat!)
             if session.get("has_photo") or session.get("quantity") or session.get("history_count", 0) > 1:
                 if session.get("has_photo") and not session.get("quantity"):
                     send_whatsapp_text(
@@ -511,7 +544,6 @@ async def process_incoming_whatsapp_message(value: dict):
                         f"Ji {salutation}, batayein sir, aage kya update hai?"
                     )
             else:
-                # Brand new customer first-time greeting
                 welcome_msg = (
                     "Namaste! ABC Buttons mein aapka swagat hai.\n\n"
                     "Garments ke liye kisi bhi type ke buttons chahiye hon, toh aap button ki photo or design yahan share kar sakte hain.\n\n"
@@ -527,11 +559,12 @@ def home():
     return {
         "status": "online",
         "service": "ABC Buttons 24/7 WhatsApp AI Bot",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "features": [
             "Customer Context Awareness",
             "No Repetition Rule",
             "One Question at a Time",
+            "Commercial & Pricing Rules (1.1 - 7.0)",
             "Automatic Buyer Photo Scan",
             "Stock Verification & Rate Assistant"
         ]
