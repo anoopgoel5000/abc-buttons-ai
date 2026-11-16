@@ -36,7 +36,10 @@ def get_buyer_session(phone: str) -> dict:
             "matched_size": None,
             "quantity": None,
             "has_address": False,
-            "history_count": 0
+            "history_count": 0,
+            "waiting_for_similar_permission": False,
+            "waiting_for_similar_approval": False,
+            "suggested_alternatives": []
         }
     return buyer_sessions[phone]
 
@@ -117,74 +120,81 @@ async def process_incoming_whatsapp_message(value: dict):
                 )
                 return
                 
-            # 4. Handle button not in catalog (Unavailable Product & Alternative Rule)
+            # 4. RULE: EXACT MATCH ONLY (अगर एग्जैक्ट बटन नहीं है, तो सिमिलर दिखाने की परमिशन माँगें)
             if status == "NOT_IN_CATALOG" or not best_sku:
                 session["has_photo"] = True
-                # Fetch 2 closest running alternatives from catalog
+                session["waiting_for_similar_permission"] = True
+                
+                # Check closest similar running items in catalog
                 alts = SAMPLE_CATALOG[:2]
-                alt_lines = "\n".join([f"• {a['name']} ({a.get('size_ligne', '')}) - Ready Godown Stock" for a in alts])
+                session["suggested_alternatives"] = [a["sku"] for a in alts]
+                
+                # Polite permission request
                 not_in_cat_msg = (
                     f"Ji {salutation}, aapka sample dekh liya hai.\n\n"
-                    f"Ye exact button design abhi hamare ready stock me available nahi hai. "
-                    f"Lekin isse milte-julte ye 2 running options ready stock me uplabdh hain:\n\n"
-                    f"{alt_lines}\n\n"
-                    f"Kya aap inke matching samples dekhna chahenge, ya aapko yahi exact design factory se develop karwana hai sir?"
+                    f"Ye exact button design abhi hamare ready stock me available nahi hai.\n\n"
+                    f"Kya main aapko isse milte-julte (similar) designs ke buttons dikha doon?"
                 )
                 send_whatsapp_text(from_phone, not_in_cat_msg)
+                print(f"📤 Asked permission for similar designs to {from_phone}")
                 return
                 
-            # 5. Handle Verified Catalog Match -> Update Session Context
+            # 5. Handle Verified EXACT Catalog Match
             matched_item = get_item_by_sku(best_sku) or SAMPLE_CATALOG[0]
             session["has_photo"] = True
             session["matched_sku"] = matched_item["sku"]
             session["matched_name"] = matched_item["name"]
             session["matched_size"] = matched_item.get("size_ligne", "")
+            session["waiting_for_similar_permission"] = False
+            session["waiting_for_similar_approval"] = False
             
-            # Message 1: Primary Match Image + Specs
+            # Auto-save latest WhatsApp inquiry for Tab 5 Proforma 1-Click
+            try:
+                import datetime
+                ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
+                if os.path.exists(ds_path):
+                    with open(ds_path, "r", encoding="utf-8") as fp:
+                        ds = json.load(fp)
+                    ds["latest_whatsapp_inquiry"] = {
+                        "buyer_name": contact_name,
+                        "phone": from_phone,
+                        "sku": matched_item["sku"],
+                        "qty_gross": session.get("quantity") or 200,
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    with open(ds_path, "w", encoding="utf-8") as fp:
+                        json.dump(ds, fp, indent=2)
+            except Exception as e:
+                print(f"Error saving latest inquiry: {e}")
+            
+            # Send ONLY THE EXACT MATCHING BUTTON (No 3 options, Strictly exact match!)
             p_img_path = os.path.join(CAT_DIR, f"{matched_item['sku']}.jpg")
             if os.path.exists(p_img_path):
                 with open(p_img_path, "rb") as fp:
                     p_img_bytes = fp.read()
                 best_caption = (
-                    f"🏆 *100% Matching Stock: {matched_item['name']}*\n"
+                    f"🏆 *Exact Matching Stock: {matched_item['name']}*\n"
                     f"• Size: {matched_item.get('size_ligne', '')} • {matched_item.get('holes', '')}\n"
                     f"• Ready Godown Stock: *{matched_item.get('stock_gross', 0):,} Gross* ({matched_item.get('stock_gross', 0)*144:,} Pcs)\n"
-                    f"• Stock Status: Available in Godown\n\n"
-                    f"Same quality aur premium export finish ready mil jayegi."
+                    f"• Stock Status: Available in Central Godown\n\n"
+                    f"Same quality aur 100% genuine export finish ready mil jayegi."
                 )
                 send_whatsapp_image(from_phone, p_img_bytes, best_caption)
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(1.2)
                 
-            # Message 2 & 3: Alternative Running Options
-            alternatives = get_alternative_skus(best_sku, limit=2)
-            for idx, alt_item in enumerate(alternatives, start=2):
-                alt_path = os.path.join(CAT_DIR, f"{alt_item['sku']}.jpg")
-                if os.path.exists(alt_path):
-                    with open(alt_path, "rb") as afp:
-                        alt_bytes = afp.read()
-                    alt_caption = (
-                        f"🔘 *Option {idx}: {alt_item['name']}*\n"
-                        f"• Size: {alt_item.get('size_ligne', '')} • {alt_item.get('holes', '')}\n"
-                        f"• Ready Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
-                        f"• Stock Status: Ready Godown Stock"
-                    )
-                    send_whatsapp_image(from_phone, alt_bytes, alt_caption)
-                    await asyncio.sleep(1.5)
-                    
-            # ONE QUESTION AT A TIME RULE (IDEAL CUSTOMER RESPONSE)
+            # ONE QUESTION AT A TIME RULE: Ask ONLY for required quantity
             if not session.get("quantity"):
                 cta_text = (
-                    "Ji sir, aapke share kiye hue sample ka matching stock hamare paas available hai.\n\n"
+                    "Ji sir, aapke share kiye hue sample ka exact matching stock hamare paas available hai.\n\n"
                     "Aapko kitni quantity chahiye?"
                 )
             else:
-                # If quantity already provided earlier
                 cta_text = (
                     f"Ji sir, aapka sample identify ho gaya hai. "
-                    f"Aapki {session['quantity']} Gross requirement ke according hum quotation check karte hain."
+                    f"Aapki {session['quantity']} Gross requirement ke according hum quotation prepare kar rahe hain."
                 )
             send_whatsapp_text(from_phone, cta_text)
-            print(f"📤 Sent Ideal One-Question-At-A-Time CTA to {from_phone}")
+            print(f"📤 Sent Exact Match and Quantity Question to {from_phone}")
             
         except Exception as e:
             print(f"❌ Error processing image from {from_phone}: {e}")
@@ -198,6 +208,87 @@ async def process_incoming_whatsapp_message(value: dict):
         text_body = msg.get("text", {}).get("body", "").strip()
         lower_text = text_body.lower()
         print(f"💬 [INCOMING TEXT] From: {from_phone} | Message: '{text_body}'")
+
+        # ---------------- STEP A: HANDLE SIMILAR PERMISSION RESPONSE ----------------
+        if session.get("waiting_for_similar_permission"):
+            # Check if customer agrees / gives permission (haan, yes, dikha do, bhejo, options, ok, sure, dikhao)
+            agrees = any(w in lower_text for w in ["haan", "yes", "dikha do", "bhejo", "options", "dikhao", "sure", "ok", "chalega", "dekhte", "send"]) and not any(w in lower_text for w in ["nahi", "no", "not", "mat", "sirf yahi", "wahi"])
+            rejects = any(w in lower_text for w in ["nahi", "no", "mat", "sirf yahi", "same design", "wahi chahiye", "nahi chahiye", "rehne do"])
+            
+            if agrees:
+                session["waiting_for_similar_permission"] = False
+                session["waiting_for_similar_approval"] = True
+                
+                # Send polite intro
+                send_whatsapp_text(from_phone, "Ji sir, ye dekhiye isse milte-julte hamare 2 running options:")
+                await asyncio.sleep(1.0)
+                
+                # Send 2 similar options
+                alts = [get_item_by_sku(s) for s in session.get("suggested_alternatives", [])]
+                alts = [a for a in alts if a] or SAMPLE_CATALOG[:2]
+                
+                for idx, alt_item in enumerate(alts, start=1):
+                    alt_path = os.path.join(CAT_DIR, f"{alt_item['sku']}.jpg")
+                    if os.path.exists(alt_path):
+                        with open(alt_path, "rb") as afp:
+                            alt_bytes = afp.read()
+                        alt_caption = (
+                            f"🔘 *Option {idx}: {alt_item['name']}*\n"
+                            f"• Size: {alt_item.get('size_ligne', '')} • {alt_item.get('holes', '')}\n"
+                            f"• Ready Godown Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
+                            f"• Stock Status: Ready Godown Stock"
+                        )
+                        send_whatsapp_image(from_phone, alt_bytes, alt_caption)
+                        await asyncio.sleep(1.2)
+                
+                # Ask for customer's approval on the similar buttons
+                approval_prompt = (
+                    "Sir, inme se kaun sa design aapke fabric/garment ke liye sahi rahega?\n\n"
+                    "Aap confirm karenge toh hum aage quotation aur sample arrange kar denge."
+                )
+                send_whatsapp_text(from_phone, approval_prompt)
+                print(f"📤 Sent Similar Options & Asked Approval to {from_phone}")
+                return
+                
+            elif rejects:
+                session["waiting_for_similar_permission"] = False
+                # Rejection response: custom manufacturing or polite closure
+                rejection_msg = (
+                    "Ji sir, bilkul samajh gaye. Yahi exact design hum factory se custom manufacture karwa sakte hain (Minimum order 500 Gross).\n\n"
+                    "Agar aapki bulk requirement ho toh batayein, hum factory se sampling start karwa denge. Thank you!"
+                )
+                send_whatsapp_text(from_phone, rejection_msg)
+                print(f"📤 Buyer rejected similar options. Sent custom manufacture msg to {from_phone}")
+                return
+
+        # ---------------- STEP B: HANDLE SIMILAR SELECTION APPROVAL ----------------
+        if session.get("waiting_for_similar_approval"):
+            selected_alt_sku = None
+            if "option 1" in lower_text or "1" in lower_text or "136" in lower_text:
+                selected_alt_sku = session.get("suggested_alternatives", ["ABC-136"])[0] if session.get("suggested_alternatives") else "ABC-136"
+            elif "option 2" in lower_text or "2" in lower_text or "139" in lower_text:
+                selected_alt_sku = session.get("suggested_alternatives", ["ABC-136", "ABC-139"])[1] if len(session.get("suggested_alternatives", [])) > 1 else "ABC-139"
+            
+            if selected_alt_sku:
+                sel_item = get_item_by_sku(selected_alt_sku) or SAMPLE_CATALOG[0]
+                session["matched_sku"] = sel_item["sku"]
+                session["matched_name"] = sel_item["name"]
+                session["waiting_for_similar_approval"] = False
+                
+                ack_msg = (
+                    f"Ji sir, aapka approval note kar liya hai: *{sel_item['name']}*.\n\n"
+                    f"Aapko iski kitni quantity chahiye? Hum turant iska best quotation prepare kar dete hain."
+                )
+                send_whatsapp_text(from_phone, ack_msg)
+                print(f"📤 Customer approved {sel_item['sku']}. Asked for quantity.")
+                return
+            elif any(w in lower_text for w in ["dono nahi", "koi nahi", "pasand nahi", "reject"]):
+                session["waiting_for_similar_approval"] = False
+                no_opt_msg = (
+                    "Ji sir, samajh gaye. Agar aapko exact wahi design custom develop karwana ho, toh batayein hum factory se discuss karke sampling arrange kar denge. Thank you!"
+                )
+                send_whatsapp_text(from_phone, no_opt_msg)
+                return
 
         # Parse quantity if stated
         gross_match = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
