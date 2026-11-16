@@ -39,7 +39,8 @@ def get_buyer_session(phone: str) -> dict:
             "history_count": 0,
             "waiting_for_similar_permission": False,
             "waiting_for_similar_approval": False,
-            "suggested_alternatives": []
+            "suggested_alternatives": [],
+            "waiting_for_custom_mfg_qty": False
         }
     return buyer_sessions[phone]
 
@@ -263,11 +264,37 @@ async def process_incoming_whatsapp_message(value: dict):
 
         # ---------------- STEP B: HANDLE SIMILAR SELECTION APPROVAL ----------------
         if session.get("waiting_for_similar_approval"):
+            # Check for Rejection FIRST (before checking option numbers)
+            rejection_keywords = [
+                "nahi", "nahu", "no", "not", "na", "mat", "koi bhi nahi", "koi nahi", 
+                "dono nahi", "isme se nahi", "rehne do", "kuch nahi", "cancel", "pasand nahi",
+                "alag chahiye", "same chahiye", "wahi chahiye", "ye nahi", "chhod do", "inme se koi"
+            ]
+            is_rejected = any(k in lower_text for k in rejection_keywords)
+            
+            if is_rejected:
+                session["waiting_for_similar_approval"] = False
+                session["waiting_for_similar_permission"] = False
+                session["waiting_for_custom_mfg_qty"] = True
+                
+                # EXACT SAMPLE REJECTION & CUSTOM MANUFACTURING RULE (Rule 3, 4, 5, 6):
+                # Politely acknowledge rejection, offer custom manufacturing check, ask approx quantity.
+                # Strictly DO NOT mention MOQ, pricing or manufacturing charges at this stage.
+                rejection_msg = (
+                    f"Ji {salutation}, koi baat nahi.\n\n"
+                    f"Agar aapko aapke original sample ke according yahi exact button design custom manufacture karwana ho, toh hum factory feasibility check karwa sakte hain.\n\n"
+                    f"Aapko lagbhag kitni quantity ki requirement rahegi sir?"
+                )
+                send_whatsapp_text(from_phone, rejection_msg)
+                print(f"📤 Customer rejected options. Offered custom mfg check and asked quantity without MOQ to {from_phone}")
+                return
+
+            # Check if customer approved Option 1 or Option 2
             selected_alt_sku = None
-            if "option 1" in lower_text or "1" in lower_text or "136" in lower_text:
+            if "option 1" in lower_text or "pehla" in lower_text or "136" in lower_text or ("1" in lower_text and "2" not in lower_text):
                 selected_alt_sku = session.get("suggested_alternatives", ["ABC-136"])[0] if session.get("suggested_alternatives") else "ABC-136"
-            elif "option 2" in lower_text or "2" in lower_text or "139" in lower_text:
-                selected_alt_sku = session.get("suggested_alternatives", ["ABC-136", "ABC-139"])[1] if len(session.get("suggested_alternatives", [])) > 1 else "ABC-139"
+            elif "option 2" in lower_text or "doosra" in lower_text or "137" in lower_text or "139" in lower_text or ("2" in lower_text and "1" not in lower_text):
+                selected_alt_sku = session.get("suggested_alternatives", ["ABC-136", "ABC-137"])[1] if len(session.get("suggested_alternatives", [])) > 1 else "ABC-137"
             
             if selected_alt_sku:
                 sel_item = get_item_by_sku(selected_alt_sku) or SAMPLE_CATALOG[0]
@@ -282,12 +309,37 @@ async def process_incoming_whatsapp_message(value: dict):
                 send_whatsapp_text(from_phone, ack_msg)
                 print(f"📤 Customer approved {sel_item['sku']}. Asked for quantity.")
                 return
-            elif any(w in lower_text for w in ["dono nahi", "koi nahi", "pasand nahi", "reject"]):
-                session["waiting_for_similar_approval"] = False
-                no_opt_msg = (
-                    "Ji sir, samajh gaye. Agar aapko exact wahi design custom develop karwana ho, toh batayein hum factory se discuss karke sampling arrange kar denge. Thank you!"
+
+                # ---------------- STEP C: HANDLE CUSTOM MANUFACTURING QUANTITY RESPONSE ----------------
+        if session.get("waiting_for_custom_mfg_qty"):
+            rejection_keywords = ["nahi", "nahu", "no", "not", "cancel", "rehne do", "kuch nahi", "mat", "not interested"]
+            if any(k in lower_text for k in rejection_keywords):
+                session["waiting_for_custom_mfg_qty"] = False
+                close_msg = (
+                    f"Ji {salutation}, bilkul samajh gaye. Future me jab bhi kisi specific design, colour ya size ki requirement ho, aap zaroor batayein. Thank you!"
                 )
-                send_whatsapp_text(from_phone, no_opt_msg)
+                send_whatsapp_text(from_phone, close_msg)
+                print(f"📤 Customer not interested in custom mfg. Politely closed conversation.")
+                return
+                
+            # If customer provided quantity (or mentions quantity)
+            gross_m = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
+            pcs_m = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
+            num_m = re.search(r'(\d+)', lower_text)
+            
+            if gross_m or pcs_m or num_m:
+                qty_val = int(gross_m.group(1)) if gross_m else (max(1, round(int(pcs_m.group(1))/144)) if pcs_m else int(num_m.group(1)))
+                session["quantity"] = qty_val
+                session["waiting_for_custom_mfg_qty"] = False
+                
+                # Rule 7, 8, 9, 10: Forward to sales team, confirm on same WhatsApp, do not guarantee until verified
+                forward_msg = (
+                    f"Ji {salutation}, aapki lagbhag *{qty_val} Gross* requirement note kar li hai.\n\n"
+                    f"Humne is sample ki manufacturing feasibility, MOQ aur best pricing confirmation ke liye sales team ko forward kar diya hai.\n\n"
+                    f"Hamari sales team aapse isi WhatsApp number par jaldi hi sampark karegi. Thank you sir!"
+                )
+                send_whatsapp_text(from_phone, forward_msg)
+                print(f"📤 Forwarded custom mfg inquiry ({qty_val} Gross) to sales team for {from_phone}")
                 return
 
         # Parse quantity if stated
