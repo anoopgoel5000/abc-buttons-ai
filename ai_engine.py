@@ -529,13 +529,14 @@ Focus 100% on the PHYSICAL BUTTON ITSELF:
      Set "whatsapp_buyer_draft": "Namaste! Ye specific button design abhi hamare ready catalog stock me available nahi hai. Hum apni management team se baat karke aapko update karte hain ki kya ye custom develop ho sakta hai."
 
 2. HOLE COUNT & RIM GEOMETRY (Primary Geometric Filter for Catalog Buttons):
-   - 2-HOLE with RAISED OUTER RIM (Saucer rim / recessed center well) in natural white river shell:
-     * SKU ABC-139 (Natural White River Shell Button, 2-Hole Raised Rim). Even if a few individual buttons show natural back shell markings or organic shell grain, any 2-hole natural white river shell button with a raised saucer rim MUST match SKU ABC-139!
+   - BULK HEAP / MASS / PILE OF LOOSE WHITE PEARL SHELL SHIRT BUTTONS (14L / 18L):
+     * SKU ABC-136 (White Pearl Agoya Shell Button, Bulk Stock). If the photo shows a heap, pile, or mass of small, high-gloss white pearl shell buttons for shirts (whether 2-hole or 4-hole), it is SKU ABC-136!
+   - INDIVIDUAL 2-HOLE WITH RAISED OUTER RIM (Saucer rim / recessed center well) in natural white river shell:
+     * SKU ABC-139 (Natural White River Shell Button, 2-Hole Raised Rim). Distinct raised saucer rim border with recessed center, larger 18L/24L buttons.
    - 4-HOLE with RAISED RIM / CENTER WELL in natural shell:
      * If featuring organic purple/violet/plum lip swirl markings: SKU ABC-149 (Violet Lip Swirl MOP Shell Button, 4-Hole).
      * If dark smoky gunmetal charcoal grey: SKU ABC-141 (Smoky Gunmetal Trocas Shell Button, 4-Hole).
      * If caramel amber gold: SKU ABC-137 (Caramel Gold MOP Shell Button, 4-Hole).
-     * If pure high-gloss white pearl shirt buttons: SKU ABC-136 (White Pearl Agoya Shell Button).
    - 2-HOLE FLAT or DYED SHELL:
      * Vibrant turquoise teal blue: SKU ABC-142 (Ocean Turquoise & Teal Dyed MOP Button, 2-Hole).
      * Pink/coral blush marble: SKU ABC-144 (Pink Blush Cherry Blossom MOP Shell Button, 2-Hole).
