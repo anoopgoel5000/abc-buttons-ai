@@ -511,6 +511,20 @@ async def process_incoming_whatsapp_message(value: dict):
             send_whatsapp_text(from_phone, upd_msg)
             return
 
+        # SECTION 18.6: LATEST BUYER QUESTION PRIORITY & SALES TEAM CONTACT INQUIRY
+        if any(w in lower_text for w in [
+            "kab baat karegi", "team kab call karegi", "when will your team call", 
+            "who will contact me", "call kab aayega", "kaun baat karega", 
+            "sales team kab", "kab connect karenge", "phone kab aayega", 
+            "call kab karoge", "kisko call karna hai", "contact number do", "contact person"
+        ]):
+            contact_msg = (
+                f"Ji {salutation}, hamari Sales Team aapki enquiry review kar rahi hai. "
+                f"Exact call timing abhi confirm nahi hai, lekin sambandhit sales executive jald hi aapse WhatsApp ya call par sampark karenge."
+            )
+            send_whatsapp_text(from_phone, contact_msg)
+            return
+
         # RULE 2.2: DISPATCH & DYEING LEAD TIME
         if any(w in lower_text for w in ["lead time", "timeline", "kitne din", "kab tak", "dispatch time", "delivery time", "urgent", "kitna time", "kab milega", "delivery kab"]):
             lead_msg = (
