@@ -312,36 +312,78 @@ async def process_incoming_whatsapp_message(value: dict):
 
         # ---------------- STEP C: HANDLE CUSTOM MANUFACTURING QUANTITY RESPONSE ----------------
         if session.get("waiting_for_custom_mfg_qty"):
-            rejection_keywords = ["nahi", "nahu", "no", "not", "cancel", "rehne do", "kuch nahi", "mat", "not interested"]
-            if any(k in lower_text for k in rejection_keywords):
-                session["waiting_for_custom_mfg_qty"] = False
-                close_msg = (
-                    f"Ji {salutation}, bilkul samajh gaye. Future me jab bhi kisi specific design, colour ya size ki requirement ho, aap zaroor batayein. Thank you!"
-                )
-                send_whatsapp_text(from_phone, close_msg)
-                print(f"📤 Customer not interested in custom mfg. Politely closed conversation.")
-                return
-                
+            # Check for quantity first!
             gross_m = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
             pcs_m = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
-            num_m = re.search(r'(\d+)', lower_text)
+            num_m = re.search(r'\b(\d+)\b', lower_text)
             
-            if gross_m or pcs_m or num_m:
+            if gross_m or pcs_m or (num_m and any(w in lower_text for w in ["gross", "order", "chahiye", "pcs", "pieces", "gr", "pack", "hoga", "chahiye sir"])):
                 qty_val = int(gross_m.group(1)) if gross_m else (max(1, round(int(pcs_m.group(1))/144)) if pcs_m else int(num_m.group(1)))
                 session["quantity"] = qty_val
                 session["waiting_for_custom_mfg_qty"] = False
                 
                 forward_msg = (
                     f"Ji {salutation}, aapki lagbhag *{qty_val} Gross* requirement note kar li hai.\n\n"
-                    f"Humne is sample ki manufacturing feasibility, MOQ aur best pricing confirmation ke liye sales team ko forward kar diya hai.\n\n"
-                    f"Hamari sales team aapse isi WhatsApp number par jaldi hi sampark karegi. Thank you sir!"
+                    f"Humne is sample ki custom manufacturing feasibility, MOQ aur best pricing confirmation ke liye Sales Team ko forward kar diya hai.\n\n"
+                    f"Hamari Sales Team aapse isi WhatsApp number par jaldi hi sampark karegi. Thank you sir!"
                 )
                 send_whatsapp_text(from_phone, forward_msg)
                 print(f"📤 Forwarded custom mfg inquiry ({qty_val} Gross) to sales team for {from_phone}")
                 return
 
+            # If buyer states the fact that button is not available
+            if any(p in lower_text for p in ["aapke pass hai hi nahi", "aapke paas nahi hai", "aapke pass nahi", "hai hi nahi", "stock me nahi hai", "available nahi hai", "to hai nahi", "aapke pas nahi hai"]):
+                non_stock_resp = (
+                    f"Ji bilkul {salutation}, aap sahi keh rahe hain—ye exact design hamare ready stock me available nahi hai.\n\n"
+                    f"Isiliye humne pucha tha ki agar aapki quantity bulk me ho, toh kya hum ise factory se same design custom manufacture karwayein?\n\n"
+                    f"Aapko lagbhag kitni quantity ki requirement rahegi?"
+                )
+                send_whatsapp_text(from_phone, non_stock_resp)
+                return
+
+            # Explicit rejection only (never on 'aapke pass nahi' or questions)
+            is_explicit_rejection = any(lower_text.strip() == w for w in ["nahi", "nahu", "no", "not", "cancel", "rehne do", "kuch nahi", "mat karo", "not interested", "nahi chahiye", "rehne dijiye"]) and not any(f in lower_text for f in ["pass", "paas", "stock", "hai hi nahi", "to nahi", "bataya"])
+            if is_explicit_rejection:
+                session["waiting_for_custom_mfg_qty"] = False
+                close_msg = (
+                    f"Ji {salutation}, bilkul samajh gaye. Future me jab bhi kisi specific design, colour ya size ki requirement ho, aap zaroor batayein. Thank you!"
+                )
+                send_whatsapp_text(from_phone, close_msg)
+                print(f"📤 Customer explicitly not interested in custom mfg.")
+                return
+
         # ---------------- SPECIFIC COMMERCIAL & CUSTOMER HANDLING RULES ----------------
 
+
+        # BUYER SAYS "BATAYA TO THA / BHEJA TO THA / UPAR DEKHO"
+        if any(p in lower_text for p in [
+            "bataya to tha", "bheja to tha", "bheja tha", "bataya tha", 
+            "ye bheja to tha", "upr dekho", "upar dekho", "pehle bataya", 
+            "bhej diya", "photo dekho", "sample dekho"
+        ]):
+            if session.get("waiting_for_custom_mfg_qty"):
+                resp = (
+                    f"Ji bilkul {salutation}, aapka photo sample hamare paas logged hai.\n\n"
+                    f"Chunki ye exact design ready stock me nahi hai, isiliye hum factory se iski custom development check kar rahe hain.\n\n"
+                    f"Aapko lagbhag kitni quantity chahiye hogi, taaki Sales Team manufacturing feasibility aur rate confirm kar sake?"
+                )
+            elif session.get("quantity"):
+                resp = (
+                    f"Ji bilkul {salutation}, aapka sample aur *{session['quantity']} Gross* quantity hamare paas note hai. "
+                    f"Hamari Sales Team iska quotation review kar rahi hai aur jald aapse connect karegi."
+                )
+            elif session.get("matched_name"):
+                resp = (
+                    f"Ji bilkul {salutation}, aapka design (*{session.get('matched_name')}*) note hai. "
+                    f"Aapko approximate kitni quantity chahiye hogi?"
+                )
+            else:
+                resp = (
+                    f"Ji bilkul {salutation}, aapka sample note kar liya gaya hai. "
+                    f"Aapko lagbhag kitni quantity ki requirement rahegi?"
+                )
+            send_whatsapp_text(from_phone, resp)
+            return
 
         # ---------------- ADD-ON 18: BUYER RESPONSE INTELLIGENCE & DYNAMIC TRACKING ----------------
 
@@ -687,10 +729,21 @@ async def process_incoming_whatsapp_message(value: dict):
         else:
             if session.get("has_photo") or session.get("quantity") or session.get("history_count", 0) > 1:
                 if session.get("has_photo") and not session.get("quantity"):
-                    send_whatsapp_text(
-                        from_phone,
-                        "Ji sir, aapka sample identify ho gaya hai. Aapko kitni quantity chahiye?"
-                    )
+                    if session.get("waiting_for_custom_mfg_qty"):
+                        send_whatsapp_text(
+                            from_phone,
+                            f"Ji {salutation}, custom manufacturing feasibility ke liye kripya approximate quantity (Gross) bata dijiye."
+                        )
+                    elif session.get("matched_name"):
+                        send_whatsapp_text(
+                            from_phone,
+                            f"Ji {salutation}, {session.get('matched_name')} ke quotation ke liye aapko kitni quantity chahiye?"
+                        )
+                    else:
+                        send_whatsapp_text(
+                            from_phone,
+                            f"Ji {salutation}, aapko approximate kitni quantity ki requirement rahegi?"
+                        )
                 elif not session.get("has_photo") and session.get("quantity"):
                     send_whatsapp_text(
                         from_phone,
