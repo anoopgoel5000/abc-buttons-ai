@@ -310,6 +310,25 @@ async def process_incoming_whatsapp_message(value: dict):
                 print(f"📤 Customer approved {sel_item['sku']}. Asked for quantity.")
                 return
 
+        # SECTION 18.6: LATEST BUYER QUESTION PRIORITY & SALES TEAM CONTACT INQUIRY
+        is_contact_inquiry = any(w in lower_text for w in [
+            "kab baat", "kab call", "kab contact", "kab contct", "kab connect", 
+            "contact kab", "contct kab", "call kab", "baat kab", "connect kab",
+            "team kab", "sales team kab", "who will contact", "when will your team",
+            "phone kab", "kisko call", "contact number", "kab karegi", "kab karenge",
+            "karegi contact", "karegi contct", "baat karegi"
+        ]) or (
+            any(k in lower_text for k in ["kab", "when", "time", "kitne baje"]) and 
+            any(c in lower_text for c in ["contact", "contct", "call", "baat", "connect", "phone", "karegi", "karenge", "aayega", "aayegi"])
+        )
+        if is_contact_inquiry:
+            contact_msg = (
+                f"Ji {salutation}, hamari Sales Team aapki enquiry review kar rahi hai. "
+                f"Exact call timing abhi confirm nahi hai, lekin sambandhit sales executive jald hi aapse WhatsApp ya call par sampark karenge."
+            )
+            send_whatsapp_text(from_phone, contact_msg)
+            return
+
         # ---------------- STEP C: HANDLE CUSTOM MANUFACTURING QUANTITY RESPONSE ----------------
         if session.get("waiting_for_custom_mfg_qty"):
             # Check for quantity first!
@@ -553,19 +572,6 @@ async def process_incoming_whatsapp_message(value: dict):
             send_whatsapp_text(from_phone, upd_msg)
             return
 
-        # SECTION 18.6: LATEST BUYER QUESTION PRIORITY & SALES TEAM CONTACT INQUIRY
-        if any(w in lower_text for w in [
-            "kab baat karegi", "team kab call karegi", "when will your team call", 
-            "who will contact me", "call kab aayega", "kaun baat karega", 
-            "sales team kab", "kab connect karenge", "phone kab aayega", 
-            "call kab karoge", "kisko call karna hai", "contact number do", "contact person"
-        ]):
-            contact_msg = (
-                f"Ji {salutation}, hamari Sales Team aapki enquiry review kar rahi hai. "
-                f"Exact call timing abhi confirm nahi hai, lekin sambandhit sales executive jald hi aapse WhatsApp ya call par sampark karenge."
-            )
-            send_whatsapp_text(from_phone, contact_msg)
-            return
 
         # RULE 2.2: DISPATCH & DYEING LEAD TIME
         if any(w in lower_text for w in ["lead time", "timeline", "kitne din", "kab tak", "dispatch time", "delivery time", "urgent", "kitna time", "kab milega", "delivery kab"]):
