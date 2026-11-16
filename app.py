@@ -248,7 +248,7 @@ def save_persistent_data():
         pass
 
 # ==============================================================================
-# SAMPLE 4: "QUICK-DESK RAPID BILLING" (KHATABOOK PRO / TALLY CLOUD B2B STYLE)
+# SAMPLE 4: "QUICK-DESK RAPID BILLING" (HIGH-CONTRAST CLEAN DAYLIGHT FINTECH)
 # ==============================================================================
 st.markdown("""
 <style>
@@ -260,102 +260,96 @@ st.markdown("""
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
     
-    h1, h2, h3, h4, h5, h6 {
+    h1, h2, h3, h4, h5, h6,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4 {
         font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
+        color: #0F172A !important;
         letter-spacing: -0.015em;
     }
 
-    /* Quick-Desk Command Header (Teal & Navy Modern FinTech) */
-    .quickdesk-header-container {
-        background: linear-gradient(135deg, #0F172A 0%, #115E59 55%, #0F766E 100%);
-        border: 1px solid rgba(20, 184, 166, 0.3);
-        border-bottom: 3.5px solid #0D9488;
-        border-radius: 14px;
-        padding: 20px 26px;
-        margin-bottom: 22px;
-        box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2), 0 0 15px rgba(13, 148, 136, 0.12);
+    /* Clean Daylight Executive Header (White Card with Crisp High-Contrast) */
+    .daylight-header-card {
+        background: #FFFFFF !important;
+        border: 1.5px solid #E2E8F0 !important;
+        border-top: 4.5px solid #0D9488 !important;
+        border-radius: 14px !important;
+        padding: 22px 28px !important;
+        margin-bottom: 22px !important;
+        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04) !important;
     }
-    .header-top-row {
+    .header-flex-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
         gap: 16px;
     }
-    .brand-group {
+    .brand-identity-box {
         display: flex;
         align-items: center;
         gap: 16px;
     }
-    .brand-seal-badge {
-        width: 50px;
-        height: 50px;
+    .brand-logo-seal {
+        width: 52px;
+        height: 52px;
         border-radius: 12px;
         background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #FFFFFF;
+        color: #FFFFFF !important;
         font-family: 'Outfit', sans-serif;
         font-weight: 800;
-        font-size: 20px;
+        font-size: 21px;
         letter-spacing: 0.5px;
-        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35);
-        border: 1.5px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+        border: 1.5px solid rgba(255, 255, 255, 0.4);
     }
-    .brand-title {
-        margin: 0;
-        font-size: 23px;
-        font-weight: 800;
-        color: #F8FAFC;
-        letter-spacing: 0.3px;
-    }
-    .brand-subtitle {
-        margin: 4px 0 0 0;
-        color: #CCFBF1;
-        font-size: 13px;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .badge-teal-tag {
-        background: rgba(20, 184, 166, 0.2);
-        color: #5EEAD4;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 11px;
-        font-weight: 700;
-        border: 1px solid rgba(94, 234, 212, 0.3);
-        letter-spacing: 0.5px;
-    }
-    .status-pills-row {
+    .header-chips-row {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
     }
-    .status-pill {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+    .metric-chip {
         padding: 6px 14px;
         border-radius: 9999px;
         font-size: 12.5px;
+        font-weight: 600;
         display: flex;
         align-items: center;
         gap: 7px;
-        backdrop-filter: blur(4px);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
-    .pulse-dot {
+    .chip-green {
+        background: #ECFDF5 !important;
+        color: #065F46 !important;
+        border: 1.5px solid #A7F3D0 !important;
+    }
+    .chip-teal {
+        background: #F0FDFA !important;
+        color: #0F766E !important;
+        border: 1.5px solid #99F6E4 !important;
+    }
+    .chip-blue {
+        background: #EFF6FF !important;
+        color: #1E40AF !important;
+        border: 1.5px solid #BFDBFE !important;
+    }
+    .live-dot {
         width: 8px;
         height: 8px;
-        background-color: #2DD4BF;
+        background-color: #10B981;
         border-radius: 50%;
-        box-shadow: 0 0 8px #2DD4BF;
+        box-shadow: 0 0 8px #10B981;
         display: inline-block;
     }
 
     /* Segmented Quick-Desk Pill Tabs */
-    div[data-baseweb="tab-list"] {
+    div[data-baseweb="tab-list"],
+    .stTabs [data-baseweb="tab-list"] {
         background: #F1F5F9 !important;
         padding: 6px 8px !important;
         border-radius: 12px !important;
@@ -363,7 +357,8 @@ st.markdown("""
         gap: 6px !important;
         margin-bottom: 22px !important;
     }
-    button[data-baseweb="tab"] {
+    button[data-baseweb="tab"],
+    .stTabs [data-baseweb="tab"] {
         border-radius: 8px !important;
         border: none !important;
         padding: 8px 16px !important;
@@ -374,15 +369,24 @@ st.markdown("""
         background: transparent !important;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }
-    button[data-baseweb="tab"]:hover {
+    button[data-baseweb="tab"]:hover,
+    .stTabs [data-baseweb="tab"]:hover {
         background: #E2E8F0 !important;
         color: #0F172A !important;
     }
-    button[data-baseweb="tab"][aria-selected="true"] {
+    button[data-baseweb="tab"][aria-selected="true"],
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
         background: linear-gradient(135deg, #0F766E 0%, #0D9488 100%) !important;
         color: #FFFFFF !important;
         box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25) !important;
         border-bottom: 2px solid #5EEAD4 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] p,
+    .stTabs [data-baseweb="tab"][aria-selected="true"] p,
+    button[data-baseweb="tab"][aria-selected="true"] span,
+    .stTabs [data-baseweb="tab"][aria-selected="true"] span {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
     }
 
     /* Clean Card Containers */
@@ -440,7 +444,7 @@ st.markdown("""
         font-family: 'Outfit', sans-serif;
         font-weight: 800;
         font-size: 21px;
-        color: #0F172A;
+        color: #0F172A !important;
         letter-spacing: 0.3px;
         margin: 0;
     }
@@ -451,7 +455,7 @@ st.markdown("""
     }
     .proforma-ref-badge {
         background: #0F766E;
-        color: #FFFFFF;
+        color: #FFFFFF !important;
         padding: 4px 10px;
         border-radius: 6px;
         font-size: 12px;
@@ -467,7 +471,7 @@ st.markdown("""
     }
     .proforma-table th {
         background: #0F172A;
-        color: #FFFFFF;
+        color: #FFFFFF !important;
         font-weight: 700;
         padding: 9px 10px;
         font-size: 12.5px;
@@ -488,7 +492,7 @@ st.markdown("""
         font-family: 'Outfit', sans-serif;
         font-size: 22px;
         font-weight: 800;
-        color: #0F766E;
+        color: #0F766E !important;
         margin: 8px 0 0 0;
         border-top: 2px solid #0F766E;
         padding-top: 8px;
@@ -553,34 +557,38 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Quick-Desk Executive Header (Strictly NO Okhla)
+# Clean Daylight Executive Header (Maximum Contrast & 100% Legibility)
 st.markdown("""
-<div class="quickdesk-header-container">
-    <div class="header-top-row">
-        <div class="brand-group">
-            <div class="brand-seal-badge">
+<div class="daylight-header-card">
+    <div class="header-flex-row">
+        <div class="brand-identity-box">
+            <div class="brand-logo-seal">
                 ABC
             </div>
             <div>
-                <h1 class="brand-title">ABC BUTTONS PRIVATE LIMITED</h1>
-                <div class="brand-subtitle">
-                    <span class="badge-teal-tag">⚡ RAPID BILLING DESK</span>
-                    <span>Garment Buttons &amp; Export Accessories</span>
-                    <span>•</span>
-                    <span>Govindpuri / Kalkaji, New Delhi - 110019</span>
+                <div style="font-family: 'Outfit', sans-serif !important; font-size: 25px !important; font-weight: 800 !important; color: #0F172A !important; line-height: 1.2 !important; margin: 0 !important; letter-spacing: -0.01em !important;">
+                    ABC BUTTONS PRIVATE LIMITED
+                </div>
+                <div style="font-size: 13px !important; color: #475569 !important; font-weight: 500 !important; margin-top: 5px !important; display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
+                    <span style="background: #CCFBF1 !important; color: #0F766E !important; font-weight: 700 !important; font-size: 11px !important; padding: 3px 9px !important; border-radius: 6px !important; border: 1px solid #99F6E4 !important;">
+                        ⚡ RAPID BILLING DESK
+                    </span>
+                    <span style="color: #334155; font-weight: 600;">Garment Buttons &amp; Export Accessories</span>
+                    <span style="color: #CBD5E1;">•</span>
+                    <span style="color: #64748B;">Govindpuri / Kalkaji, New Delhi - 110019</span>
                 </div>
             </div>
         </div>
-        <div class="status-pills-row">
-            <div class="status-pill" style="color: #5EEAD4;">
-                <span class="pulse-dot"></span>
+        <div class="header-chips-row">
+            <div class="metric-chip chip-green">
+                <span class="live-dot"></span>
                 <span>Meta WhatsApp Cloud API: <b>Active (60-Day)</b></span>
             </div>
-            <div class="status-pill" style="color: #FEF08A;">
+            <div class="metric-chip chip-teal">
                 <span>📦</span>
                 <span>Ready Stock: <b>18,450 Gross</b></span>
             </div>
-            <div class="status-pill" style="color: #93C5FD;">
+            <div class="metric-chip chip-blue">
                 <span>⚡</span>
                 <span>Vision Matcher: <b>100% Calibrated</b></span>
             </div>
