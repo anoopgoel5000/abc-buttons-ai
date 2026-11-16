@@ -240,14 +240,40 @@ def save_persistent_data():
                 x["sku"]: {"stock_gross": x.get("stock_gross", 0), "rate_per_gross": x.get("rate_per_gross", 0)}
                 for x in st.session_state.get("live_catalog", [])
             },
-            "quotation_history": st.session_state.get("quotation_history", [])
+            "quotation_history": st.session_state.get("quotation_history", []),
+            "live_whatsapp_inquiries": st.session_state.get("live_whatsapp_inquiries", [])
         }
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
 
-# ==============================================================================
+def sync_live_whatsapp_inquiries():
+    """Fetches real-time buyer photos and inquiries from Render WhatsApp webhook server."""
+    cloud_url = "https://abc-buttons-ai.onrender.com/api/live_inquiries"
+    try:
+        import urllib.request
+        req = urllib.request.Request(cloud_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                cloud_list = data.get("inquiries", [])
+                if cloud_list:
+                    local_list = list(st.session_state.get("live_whatsapp_inquiries", []))
+                    for cinq in cloud_list:
+                        match_idx = next((i for i, x in enumerate(local_list) if x.get("phone") == cinq.get("phone")), None)
+                        if match_idx is not None:
+                            local_list[match_idx] = cinq
+                        else:
+                            local_list.insert(0, cinq)
+                    st.session_state["live_whatsapp_inquiries"] = local_list[:50]
+                    save_persistent_data()
+                    return len(cloud_list)
+    except Exception as e:
+        print(f"Error syncing from cloud: {e}")
+    return 0
+
+# ===============================================================================
 # SAMPLE 4: "QUICK-DESK RAPID BILLING" (HIGH-CONTRAST CLEAN DAYLIGHT FINTECH)
 # ==============================================================================
 st.markdown("""
@@ -599,6 +625,9 @@ st.markdown("""
 
 
 persisted = load_persistent_data()
+if "live_whatsapp_inquiries" not in st.session_state:
+    st.session_state["live_whatsapp_inquiries"] = persisted.get("live_whatsapp_inquiries", [])
+
 
 # Ensure full updated catalog (Strictly 100% Genuine Real Photo SKUs)
 if "live_catalog" not in st.session_state or len(st.session_state.live_catalog) != len(SAMPLE_CATALOG) or any(x["sku"] not in [s["sku"] for s in SAMPLE_CATALOG] for x in st.session_state.live_catalog):
@@ -689,6 +718,61 @@ tabs = st.tabs([
 with tabs[0]:
     st.subheader("🔍 Test Buyer Inquiries with Real Photos")
     st.caption("यहाँ आपके द्वारा भेजी गई असली बटनों की तस्वीरों से टेस्ट करें कि जब कोई बायर WhatsApp पर फोटो भेजता है, तो AI कैसे 3 सेकंड में स्टॉक व सही SKU ढूंढता है:")
+
+    # ---------------- LIVE WHATSAPP INCOMING INQUIRIES FEED ----------------
+    with st.expander("📥 Live WhatsApp Customer Inquiries (WhatsApp से आई असली बायर फोटोज़ व ऑर्डर्स)", expanded=True):
+        col_hdr, col_btn = st.columns([3, 1])
+        with col_hdr:
+            inqs_count = len(st.session_state.get('live_whatsapp_inquiries', []))
+            st.markdown(f"**Live Incoming Customer Feed:** `{inqs_count} Customer Inquiries Stored`")
+        with col_btn:
+            if st.button("🔄 Sync with WhatsApp", key="sync_wa_tab1_btn", help="Fetches real-time buyer photos from Render cloud"):
+                with st.spinner("WhatsApp से नया बायर डेटा व फोटोज़ डाउनलोड हो रही हैं..."):
+                    cnt = sync_live_whatsapp_inquiries()
+                    if cnt > 0:
+                        st.success(f"✅ {cnt} ग्राहक(ों) का डेटा व असली फोटोज़ डाउनलोड हो गईं!")
+                        st.rerun()
+                    else:
+                        st.info("सभी रिकॉर्ड्स पहले से ही अप-टू-डेट हैं।")
+        
+        wa_inqs = st.session_state.get("live_whatsapp_inquiries", [])
+        if not wa_inqs:
+            st.info("💡 अभी तक इस सिस्टम में कोई नया रिकॉर्ड सेव नहीं है। जैसे ही कोई ग्राहक आपके WhatsApp नंबर पर फोटो या मैसेज भेजेगा, 'Sync with WhatsApp' बटन दबाते ही उसकी असली फोटो और पूरा विवरण यहाँ दिखाई देने लगेगा!")
+        else:
+            for inq_i, inq in enumerate(wa_inqs):
+                with st.container():
+                    st.markdown("""<hr style="margin: 8px 0; border: none; border-top: 1px solid #e2e8f0;">""", unsafe_allow_html=True)
+                    c_card1, c_card2, c_card3 = st.columns([1.2, 2.5, 1.3])
+                    with c_card1:
+                        p_b64 = inq.get("photo_b64")
+                        if p_b64:
+                            try:
+                                import base64
+                                from io import BytesIO
+                                st.image(BytesIO(base64.b64decode(p_b64)), caption="Buyer's Real Photo", use_container_width=True)
+                            except Exception:
+                                st.write("📷 [Photo Available]")
+                        else:
+                            st.write("💬 Text Inquiry")
+                    with c_card2:
+                        st.markdown(f"**👤 {inq.get('buyer_name', 'Customer')}** (`+{inq.get('phone', '')}`)")
+                        st.markdown(f"⏱️ *Received:* `{inq.get('timestamp', '')}`")
+                        st.markdown(f"🔘 **Matched Button:** `{inq.get('matched_sku', 'N/A')}` - {inq.get('matched_name', '')}")
+                        qty_show = f"**{inq.get('quantity')} Gross** ({inq.get('quantity', 0)*144:,} Pcs)" if inq.get('quantity') else "*Awaiting Quantity Confirmation*"
+                        st.markdown(f"📦 **Requested Qty:** {qty_show}")
+                        st.caption(f"Status: `{inq.get('status', 'Received')}`")
+                    with c_card3:
+                        st.write("")
+                        st.write("")
+                        if st.button(f"🧾 1-Click Quote", key=f"btn_quote_wa_{inq_i}"):
+                            st.session_state["preset_quote_buyer"] = inq.get('buyer_name', '')
+                            st.session_state["preset_quote_phone"] = inq.get('phone', '')
+                            st.session_state["preset_quote_sku"] = inq.get('matched_sku', '')
+                            st.session_state["preset_quote_qty"] = inq.get('quantity') or 200
+                            st.success(f"✅ {inq.get('buyer_name')} का डेटा Tab 5 (1-Click Quotation) में लोड हो गया!")
+    
+    st.markdown("---")
+
     
     col_input, col_result = st.columns([1, 1])
     
@@ -1187,6 +1271,14 @@ with tabs[4]:
     
     # 1. Source Inquiry Selector (Connects WhatsApp, Tab 3 & Tab 1 to Tab 5)
     inquiry_sources = []
+    # Add all saved WhatsApp inquiries into Tab 5 dropdown!
+    for saved_inq in st.session_state.get("live_whatsapp_inquiries", []):
+        s_name = saved_inq.get("buyer_name", "Customer")
+        s_phone = saved_inq.get("phone", "")
+        s_sku = saved_inq.get("matched_sku", "Button")
+        s_qty = saved_inq.get("quantity") or 200
+        inquiry_sources.append(f"💬 Live WhatsApp: {s_name} (+{s_phone}) - {s_sku} ({s_qty} Gross)")
+
     latest_wa = persisted.get("latest_whatsapp_inquiry")
     if latest_wa:
         wa_buyer = latest_wa.get("buyer_name", "Anoop Goel")

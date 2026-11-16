@@ -50,6 +50,34 @@ processed_msg_ids = set()
 # Real-time event log for debugging
 received_events = []
 
+# Persistent Live Inquiries store for software dashboard
+DS_PATH = os.path.join(os.path.dirname(__file__), "data_store.json")
+
+def load_live_inquiries():
+    if os.path.exists(DS_PATH):
+        try:
+            with open(DS_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("live_whatsapp_inquiries", [])
+        except Exception:
+            pass
+    return []
+
+live_whatsapp_inquiries = load_live_inquiries()
+
+def save_live_inquiries():
+    try:
+        ds = {}
+        if os.path.exists(DS_PATH):
+            with open(DS_PATH, "r", encoding="utf-8") as f:
+                ds = json.load(f)
+        ds["live_whatsapp_inquiries"] = live_whatsapp_inquiries[:50]
+        with open(DS_PATH, "w", encoding="utf-8") as f:
+            json.dump(ds, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving inquiries: {e}")
+
+
 def get_item_by_sku(sku: str):
     for item in SAMPLE_CATALOG:
         if item.get("sku") == sku:
@@ -106,11 +134,37 @@ async def process_incoming_whatsapp_message(value: dict):
             img_bytes = download_whatsapp_media(media_id)
             print(f"✅ Downloaded {len(img_bytes)} bytes from Meta")
             
+            import base64
+            b64_img = base64.b64encode(img_bytes).decode("utf-8")
+            
             # 2. Run AI Vision Matcher
             res = analyze_button_or_fabric_image(img_bytes, caption)
             status = res.get("match_status", "MATCH_FOUND")
             best_sku = res.get("best_match_sku")
             print(f"🔍 AI Result: Status={status} | SKU={best_sku}")
+            # Record customer inquiry with real photo in live CRM feed
+            import datetime
+            t_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            inq_entry = {
+                "id": msg_id,
+                "timestamp": t_now,
+                "buyer_name": contact_name,
+                "phone": from_phone,
+                "photo_b64": b64_img,
+                "matched_sku": best_sku or "Custom / Non-Catalog",
+                "matched_name": (get_item_by_sku(best_sku) or {}).get("name", "Custom Button Development") if best_sku else "Custom Button Development",
+                "matched_size": (get_item_by_sku(best_sku) or {}).get("size_ligne", "") if best_sku else "",
+                "quantity": session.get("quantity") or 0,
+                "status": "Sample Identified" if best_sku else "Custom Development Requested",
+                "notes": caption or ""
+            }
+            # Update or insert at top
+            existing_idx = next((i for i, x in enumerate(live_whatsapp_inquiries) if x.get("phone") == from_phone), None)
+            if existing_idx is not None:
+                live_whatsapp_inquiries.pop(existing_idx)
+            live_whatsapp_inquiries.insert(0, inq_entry)
+            save_live_inquiries()
+
             
             # 3. Handle non-button images
             if status == "NO_BUTTON_DETECTED" or not res.get("is_button", True):
@@ -339,6 +393,13 @@ async def process_incoming_whatsapp_message(value: dict):
             if gross_m or pcs_m or (num_m and any(w in lower_text for w in ["gross", "order", "chahiye", "pcs", "pieces", "gr", "pack", "hoga", "chahiye sir"])):
                 qty_val = int(gross_m.group(1)) if gross_m else (max(1, round(int(pcs_m.group(1))/144)) if pcs_m else int(num_m.group(1)))
                 session["quantity"] = qty_val
+                # Update quantity in live CRM inquiry
+                for item in live_whatsapp_inquiries:
+                    if item.get("phone") == from_phone:
+                        item["quantity"] = qty_val
+                        item["status"] = "Quotation Requested"
+                        break
+                save_live_inquiries()
                 session["waiting_for_custom_mfg_qty"] = False
                 
                 forward_msg = (
@@ -821,6 +882,21 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         print(f"Error handling webhook payload: {e}")
         
     return JSONResponse(content={"status": "received"}, status_code=200)
+
+@app.get("/api/live_inquiries")
+def get_live_inquiries():
+    return JSONResponse(content={
+        "status": "success",
+        "total": len(live_whatsapp_inquiries),
+        "inquiries": live_whatsapp_inquiries
+    })
+
+@app.post("/api/clear_inquiries")
+def clear_live_inquiries():
+    global live_whatsapp_inquiries
+    live_whatsapp_inquiries = []
+    save_live_inquiries()
+    return JSONResponse(content={"status": "cleared"})
 
 @app.get("/history")
 def get_history():
