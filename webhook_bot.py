@@ -342,6 +342,65 @@ async def process_incoming_whatsapp_message(value: dict):
 
         # ---------------- SPECIFIC COMMERCIAL & CUSTOMER HANDLING RULES ----------------
 
+
+        # ---------------- ADD-ON 18: BUYER RESPONSE INTELLIGENCE & DYNAMIC TRACKING ----------------
+
+        # 18.3 DYNAMIC REQUIREMENT UPDATE: SIZE CHANGE (e.g., "size 24L ki jagah 28L", "size 28L kar do")
+        sizes_found = re.findall(r'(\d{2})\s*l\b', lower_text)
+        is_size_change_request = any(k in lower_text for k in ["ki jagah", "badal", "kar do", "kar dena", "replace", "update", "change size"]) or ("se" in lower_text and len(sizes_found) >= 2)
+        if sizes_found and is_size_change_request and session.get("matched_sku"):
+            if "ki jagah" in lower_text and len(sizes_found) >= 2:
+                new_size = f"{sizes_found[1].upper()}L"
+            else:
+                new_size = f"{sizes_found[-1].upper()}L"
+                
+            old_size = session.get("matched_size", "standard")
+            session["matched_size"] = new_size
+            
+            p_name = session.get("matched_name", "Button")
+            p_qty = f"{session.get('quantity')} Gross" if session.get("quantity") else "requirement"
+            
+            size_update_msg = (
+                f"Ji {salutation}, size update kar diya hai: *{new_size}* (pehle {old_size} tha).\n\n"
+                f"Design (*{p_name}*) aur quantity (*{p_qty}*) safe hai. Hum updated size ke according Sales Team se availability check kar rahe hain."
+            )
+            send_whatsapp_text(from_phone, size_update_msg)
+            return
+
+        # 18.3 DYNAMIC REQUIREMENT UPDATE: UNCLEAR COLOUR CHANGE (e.g., "colour bhi change kar dena")
+        if any(phrase in lower_text for phrase in ["colour bhi change", "color bhi change", "colour change kar do", "color change kar dena", "colour badal do"]) and not any(c in lower_text for c in ["white", "black", "blue", "smoky", "caramel", "gold", "navy"]):
+            send_whatsapp_text(from_phone, f"Sure {salutation}, which colour would you prefer?")
+            return
+
+        # 18.2 MULTI-INTENT: SIZE + MOQ + SAMPLE IN ONE MESSAGE
+        if any(w in lower_text for w in ["sample", "swatch"]) and any(w in lower_text for w in ["moq", "minimum quantity", "kitna lena hoga", "minimum"]) and re.search(r'\d{2}\s*l\b', lower_text):
+            sz_match = re.search(r'(\d{2})\s*[lL]\b', text_body)
+            req_sz = f"{sz_match.group(1)}L" if sz_match else "required size"
+            multi_resp = (
+                f"Certainly {salutation}. We have noted your enquiry for *{req_sz}* size.\n\n"
+                f"Regarding minimum order quantity (MOQ) and sample dispatch arrangements, our Sales Team will coordinate directly with you.\n\n"
+                f"May I know your delivery address and contact person details for the sample?"
+            )
+            send_whatsapp_text(from_phone, multi_resp)
+            return
+
+        # 18.1 CONTEXTUAL YES / NO RESPONSE INTELLIGENCE
+        if lower_text.strip() in ["yes", "haan", "correct", "sahi hai", "right", "sure", "yup"]:
+            # Check context: if customer previously had exact match shown but didn't state qty:
+            if session.get("matched_sku") and not session.get("quantity"):
+                send_whatsapp_text(
+                    from_phone,
+                    f"Ji {salutation}, design confirmation note kar li hai: *{session.get('matched_name')}*.\n\n"
+                    f"Aapko is design me kaun sa size aur approximate kitni quantity ki requirement rahegi?"
+                )
+                return
+            elif session.get("matched_sku") and session.get("quantity"):
+                send_whatsapp_text(
+                    from_phone,
+                    f"Ji {salutation}, aapka confirmation note kar liya hai. Hum quotation finalize karwane ke liye Sales Team ko details de rahe hain. Dhanyawad!"
+                )
+                return
+
         # SECTION 20: URGENT REQUIREMENT & DELIVERY DEADLINE HANDLING
         if any(w in lower_text for w in ["urgent", "urgently", "immediate requirement", "immediately", "jaldi chahiye", "emergency", "production starting", "urgent order", "deadline"]):
             urgent_msg = (
