@@ -799,51 +799,18 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         parsed["alternative_reason"] = "ABC-139 is the top featured natural river shell SKU on this sample card."
         return _finalize_draft(parsed)
         
-    # 3. Non-shell natural & metal materials
-    if "horn" in raw_text or "buffalo" in raw_text:
-        parsed["match_status"] = "MATCH_FOUND"
-        parsed["best_match_sku"] = "ABC-HRN-24L-06"
-        parsed["match_confidence"] = 100
-        parsed["match_reason"] = "Deterministic Lock: Genuine Water Buffalo Horn Button with organic streaks and 4-hole beveled rim."
-        parsed["alternative_sku"] = "ABC-COR-24L-16"
-        parsed["alternative_reason"] = "ABC-COR-24L-16 is natural corozo nut in dark horn-compatible tones."
-        return _finalize_draft(parsed)
-        
-    if "coconut" in raw_text or "coco" in raw_text:
-        parsed["match_status"] = "MATCH_FOUND"
-        parsed["best_match_sku"] = "ABC-COCO-24L-18"
-        parsed["match_confidence"] = 100
-        parsed["match_reason"] = "Deterministic Lock: 100% Natural Coconut Shell Button with organic fibrous flecks."
-        parsed["alternative_sku"] = "ABC-WOOD-32L-19"
-        parsed["alternative_reason"] = "ABC-WOOD-32L-19 is eco-friendly natural hardwood."
-        return _finalize_draft(parsed)
-        
-    if "corozo" in raw_text or "tagua" in raw_text or "vegetable ivory" in raw_text:
-        parsed["match_status"] = "MATCH_FOUND"
-        parsed["best_match_sku"] = "ABC-COR-24L-16"
-        parsed["match_confidence"] = 100
-        parsed["match_reason"] = "Deterministic Lock: Eco-friendly Corozo Nut (Tagua / Vegetable Ivory) with radial grain."
-        parsed["alternative_sku"] = "ABC-HRN-24L-06"
-        parsed["alternative_reason"] = "ABC-HRN-24L-06 is genuine water buffalo horn."
-        return _finalize_draft(parsed)
-
-    if "wood" in raw_text or "sheesham" in raw_text or "timber" in raw_text:
-        parsed["match_status"] = "MATCH_FOUND"
-        parsed["best_match_sku"] = "ABC-WOOD-32L-19"
-        parsed["match_confidence"] = 100
-        parsed["match_reason"] = "Deterministic Lock: Natural Sheesham Hardwood Button with visible timber grain."
-        parsed["alternative_sku"] = "ABC-COCO-24L-18"
-        parsed["alternative_reason"] = "ABC-COCO-24L-18 is natural coconut shell."
-        return _finalize_draft(parsed)
-
-    if "shank" in raw_text or "metal" in raw_text or "brass" in raw_text or "loop" in raw_text:
-        parsed["match_status"] = "MATCH_FOUND"
-        parsed["best_match_sku"] = "ABC-MTL-24L-14"
-        parsed["match_confidence"] = 100
-        parsed["match_reason"] = "Deterministic Lock: Antique Brass Metal Shank Button with embossed crest and back loop."
-        parsed["alternative_sku"] = "ABC-HRN-24L-06"
-        parsed["alternative_reason"] = "ABC-HRN-24L-06 is genuine water buffalo horn for luxury tailoring."
-        return _finalize_draft(parsed)
+    # 3. Non-Catalog Materials (Wood, Horn, Corozo, Coconut, Metal Shank, Plastic, Novelty)
+    # ABC Buttons ready stock is strictly Natural Shell and Polyester shirt buttons.
+    # NEVER fake a match on materials not in ready stock!
+    if any(k in raw_text for k in ["wood", "sheesham", "timber", "horn", "buffalo", "coconut", "corozo", "tagua", "vegetable ivory", "shank", "brass metal", "metal button", "zinc alloy"]):
+        parsed["match_status"] = "NOT_IN_CATALOG"
+        parsed["best_match_sku"] = None
+        parsed["match_confidence"] = 0
+        parsed["match_reason"] = "Non-Catalog Material: Buyer sample is made of wood/horn/corozo/coconut/metal which is not in ABC Buttons ready stock catalog."
+        parsed["alternative_sku"] = "ABC-139"
+        parsed["alternative_reason"] = "ABC-139 is running natural shell ready stock."
+        parsed["whatsapp_buyer_draft"] = "Ji Sir, aapka sample dekh liya hai. Ye exact button design abhi hamare ready stock me available nahi hai."
+        return parsed
         
     if "kaudi" in raw_text or "cowrie" in raw_text:
         parsed["match_status"] = "MATCH_FOUND"
@@ -1010,10 +977,6 @@ def _finalize_draft(parsed: dict) -> dict:
         "ABC-137": "caramel gold MOP shell button",
         "ABC-144": "pink blush cherry blossom shell button",
         "ABC-SAMPLE-CARD-01": "complete natural shell sample card",
-        "ABC-HRN-24L-06": "genuine water buffalo horn button",
-        "ABC-COCO-24L-18": "natural coconut shell button",
-        "ABC-COR-24L-16": "natural corozo nut button",
-        "ABC-WOOD-32L-19": "natural sheesham hardwood button",
         "ABC-MTL-24L-14": "antique brass metal shank button"
     }
     locked_sku = parsed.get("best_match_sku", "ABC-139")
