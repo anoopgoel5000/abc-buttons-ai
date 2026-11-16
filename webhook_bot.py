@@ -342,6 +342,57 @@ async def process_incoming_whatsapp_message(value: dict):
 
         # ---------------- SPECIFIC COMMERCIAL & CUSTOMER HANDLING RULES ----------------
 
+        # SECTION 20: URGENT REQUIREMENT & DELIVERY DEADLINE HANDLING
+        if any(w in lower_text for w in ["urgent", "urgently", "immediate requirement", "immediately", "jaldi chahiye", "emergency", "production starting", "urgent order", "deadline"]):
+            urgent_msg = (
+                f"Certainly {salutation}, we understand your urgency.\n\n"
+                f"May I know your required delivery date so that we can check the feasibility with our Sales Team?"
+            )
+            send_whatsapp_text(from_phone, urgent_msg)
+            return
+
+        # SECTION 22: PAYMENT TERMS & FINANCIAL COMMITMENT RESTRICTION
+        if any(w in lower_text for w in ["payment term", "payment terms", "credit", "udhaar", "30 days", "credit facility", "pay after delivery", "partial payment", "receiving the goods"]):
+            pay_terms_msg = (
+                f"Certainly {salutation}. Our Sales Team will assist you with the payment terms and confirm the applicable arrangements."
+            )
+            send_whatsapp_text(from_phone, pay_terms_msg)
+            return
+
+        # SECTION 23: PURCHASE ORDER (PO) RECEIVED BUT ORDER NOT YET CONFIRMED
+        if any(w in lower_text for w in ["shared the po", "attached our purchase order", "attached po", "po has been", "confirm our po", "process our order", "purchase order bhej diya", "po bhej diya", "po attached", "po copy"]):
+            po_msg = (
+                f"Thank you {salutation}. We have received your Purchase Order. Our Sales Team will review the details and confirm the next steps with you."
+            )
+            send_whatsapp_text(from_phone, po_msg)
+            return
+
+        # SECTION 24: QUALITY COMPLAINT & REPLACEMENT HANDLING
+        if any(w in lower_text for w in ["damage", "damaged", "broken", "defective", "defect", "complaint", "wrong design", "short quantity", "not matching", "replacement", "khrab", "toota", "toot gaya"]):
+            complaint_msg = (
+                f"We are sorry to hear about the concern, {salutation}. We will share this with our Sales Team so they can review it and assist you.\n\n"
+                f"Could you please share your Order/Invoice number, affected quantity, and photographs of the buttons?"
+            )
+            send_whatsapp_text(from_phone, complaint_msg)
+            return
+
+        # SECTION 25: INTERNATIONAL BUYER COMMUNICATION & REQUIREMENT COLLECTION
+        if any(w in lower_text for w in ["export internationally", "ship to", "overseas", "bangladesh", "vietnam", "sri lanka", "dubai", "usa", "europe", "international moq", "incoterms", "fob", "cif", "export documentation"]):
+            intl_msg = (
+                "Thank you for sharing your requirement. May I know the product, required quantity and destination country? Our Sales Team will review your requirements and connect with you regarding the next steps."
+            )
+            send_whatsapp_text(from_phone, intl_msg)
+            return
+
+        # SECTION 28: COMPETITOR COMPARISON, NEGOTIATION & DISCOUNT RESTRICTION
+        if any(w in lower_text for w in ["competitor", "cheaper", "better rate elsewhere", "lower price elsewhere", "match this price", "sasta mil raha", "discount", "special discount", "best discount", "concession"]):
+            comp_msg = (
+                f"Certainly {salutation}. We understand that pricing is an important consideration.\n\n"
+                f"May I know your required product, size and approximate quantity so our Sales Team can review your requirement and offer the best possible commercial quotation?"
+            )
+            send_whatsapp_text(from_phone, comp_msg)
+            return
+
         # RULE 4.1 & 4.2: LOCATION & GODOWN / OFFICE VISIT SCHEDULING
         if any(w in lower_text for w in [
             "kahan hai", "kaha hai", "location", "address", "kahan par", "office visit", 
@@ -406,12 +457,19 @@ async def process_incoming_whatsapp_message(value: dict):
             send_whatsapp_text(from_phone, test_msg)
             return
 
-        # RULE 3.1: PHYSICAL SAMPLE / SAMPLE CARD DISPATCH
-        if any(w in lower_text for w in ["sample courier", "sample bhej", "sample card", "hanger card", "swatch", "sample chahiye", "cutting sample", "physical sample"]):
+        # SECTION 21: SAMPLE COURIER RESTRICTION (No To-Pay or Courier Cost discussion)
+        if any(w in lower_text for w in ["courier charge", "courier payment", "courier cost", "freight charges", "who will pay courier"]):
+            courier_charge_msg = (
+                f"Ji {salutation}, our Sales Team will coordinate the sample dispatch arrangements with you."
+            )
+            send_whatsapp_text(from_phone, courier_charge_msg)
+            return
+
+        if any(w in lower_text for w in ["sample courier", "sample bhej", "sample card", "hanger card", "swatch", "sample chahiye", "cutting sample", "physical sample", "send sample"]):
             card_path = os.path.join(CAT_DIR, "ABC-SAMPLE-CARD-01.jpg")
             sample_resp = (
-                f"Ji bilkul {salutation}, hum aapke approval ke liye required button samples arrange karwa sakte hain.\n\n"
-                f"Samples Courier To-Pay (Freight Collect) par bheje ja sakte hain. Kripya apna delivery address aur contact person ka naam share kar dijiye."
+                f"Certainly {salutation}, we can assist you with the sample arrangements.\n\n"
+                f"May I know your delivery address and contact person's details so our team can coordinate the next steps?"
             )
             if os.path.exists(card_path):
                 with open(card_path, "rb") as cfp:
