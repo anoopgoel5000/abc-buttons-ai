@@ -265,7 +265,11 @@ def sync_live_whatsapp_inquiries():
     cloud_url = "https://abc-buttons-ai.onrender.com/api/live_inquiries"
     try:
         import urllib.request
-        req = urllib.request.Request(cloud_url, headers={"User-Agent": "Mozilla/5.0"})
+        admin_key = os.getenv("ADMIN_API_KEY", "")
+        headers = {"User-Agent": "Mozilla/5.0"}
+        if admin_key:
+            headers["X-API-Key"] = admin_key
+        req = urllib.request.Request(cloud_url, headers=headers)
         with urllib.request.urlopen(req, timeout=12) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -786,7 +790,7 @@ with tabs[0]:
                 </p>
             </div>
             <div style="background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);">
-                <span style="color: #4ade80; font-weight: 700; font-size: 13px;">🟢 Live Meta API Connected</span>
+                {"<span style='color: #4ade80; font-weight: 700; font-size: 13px;'>🟢 Live Meta API Active</span>" if (os.getenv("WHATSAPP_ACCESS_TOKEN") or getattr(whatsapp_service, "WHATSAPP_TOKEN", None)) else "<span style='color: #f87171; font-weight: 700; font-size: 13px;'>🔴 Meta API Offline</span>"}
             </div>
         </div>
     </div>
@@ -1051,7 +1055,7 @@ with tabs[0]:
                             </div>
                             <div>
                                 <div style="font-weight: 700; font-size: 13px; color: #FFFFFF; line-height: 1.2;">{active_inq.get('buyer_name', 'Customer')}</div>
-                                <div style="font-size: 10px; color: #A7F3D0;">online ●</div>
+                                <div style="font-size: 10px; color: #A7F3D0;">Verified WhatsApp Contact</div>
                             </div>
                         </div>
                         <div style="font-size: 14px; display: flex; gap: 10px; color: #FFFFFF; opacity: 0.9;">
