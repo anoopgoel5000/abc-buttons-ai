@@ -24,32 +24,6 @@ app = FastAPI(title="ABC Buttons WhatsApp Webhook Server")
 VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "abc_buttons_secret_2026")
 CAT_DIR = os.path.join(os.path.dirname(__file__), "catalog_images")
 
-# In-memory customer context session store
-buyer_sessions = {}
-
-def get_buyer_session(phone: str) -> dict:
-    if phone not in buyer_sessions:
-        buyer_sessions[phone] = {
-            "has_photo": False,
-            "matched_sku": None,
-            "matched_name": None,
-            "matched_size": None,
-            "quantity": None,
-            "has_address": False,
-            "history_count": 0,
-            "waiting_for_similar_permission": False,
-            "waiting_for_similar_approval": False,
-            "suggested_alternatives": [],
-            "waiting_for_custom_mfg_qty": False
-        }
-    return buyer_sessions[phone]
-
-# Message deduplication cache
-processed_msg_ids = set()
-
-# Real-time event log for debugging
-received_events = []
-
 # Persistent Live Inquiries store for software dashboard
 DS_PATH = os.path.join(os.path.dirname(__file__), "data_store.json")
 
@@ -64,6 +38,51 @@ def load_live_inquiries():
     return []
 
 live_whatsapp_inquiries = load_live_inquiries()
+
+# In-memory customer context session store with persistent rehydration (Scenario H)
+buyer_sessions = {}
+processed_msg_ids = set()
+received_events = []
+
+def get_buyer_session(phone: str) -> dict:
+    clean_p = re.sub(r'\D', '', str(phone)) if phone else ""
+    sess_key = clean_p[-10:] if len(clean_p) >= 10 else clean_p
+    
+    if sess_key not in buyer_sessions:
+        sess = {
+            "has_photo": False,
+            "matched_sku": None,
+            "matched_name": None,
+            "matched_size": None,
+            "quantity": None,
+            "has_address": False,
+            "history_count": 0,
+            "waiting_for_similar_permission": False,
+            "waiting_for_similar_approval": False,
+            "suggested_alternatives": [],
+            "waiting_for_custom_mfg_qty": False,
+            "last_active_sku": None
+        }
+        # Rehydrate from persistent live inquiries (survives Render restart / sleep)
+        try:
+            inqs = load_live_inquiries()
+            for inq in inqs:
+                inq_p = re.sub(r'\D', '', str(inq.get("phone", "")))
+                if inq_p and (inq_p == clean_p or (len(clean_p) >= 10 and inq_p.endswith(clean_p[-10:]))):
+                    if inq.get("matched_sku") and inq.get("matched_sku") != "Inquiry":
+                        sess["matched_sku"] = inq.get("matched_sku")
+                        sess["matched_name"] = inq.get("matched_name")
+                        sess["matched_size"] = inq.get("matched_size")
+                        sess["last_active_sku"] = inq.get("matched_sku")
+                        sess["has_photo"] = True
+                    if inq.get("quantity"):
+                        sess["quantity"] = inq.get("quantity")
+                    break
+        except Exception as e:
+            print(f"Error rehydrating session for {phone}: {e}")
+            
+        buyer_sessions[sess_key] = sess
+    return buyer_sessions[sess_key]
 
 def save_live_inquiries():
     try:
@@ -83,8 +102,11 @@ def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text
         import datetime
         t_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         time_short = datetime.datetime.now().strftime("%H:%M")
+        clean_p = re.sub(r'\D', '', str(phone)) if phone else ""
+        sess_key = clean_p[-10:] if len(clean_p) >= 10 else clean_p
+        sess = buyer_sessions.get(sess_key, {})
         
-        entry = next((x for x in live_whatsapp_inquiries if x.get("phone") == phone), None)
+        entry = next((x for x in live_whatsapp_inquiries if re.sub(r'\D', '', str(x.get("phone", ""))).endswith(sess_key)), None)
         if not entry:
             entry = {
                 "id": f"inq_{phone}",
@@ -92,11 +114,11 @@ def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text
                 "buyer_name": buyer_name or "Buyer",
                 "phone": phone,
                 "photo_b64": photo_b64 if sender == "buyer" and photo_b64 else "",
-                "matched_sku": sku or "Inquiry",
-                "matched_name": (get_item_by_sku(sku) or {}).get("name", "Button Inquiry") if sku else "Button Inquiry",
-                "matched_size": (get_item_by_sku(sku) or {}).get("size_ligne", "") if sku else "",
-                "quantity": 0,
-                "status": "Chat Active",
+                "matched_sku": sku or sess.get("matched_sku") or "Inquiry",
+                "matched_name": (get_item_by_sku(sku or sess.get("matched_sku")) or {}).get("name", "Button Inquiry"),
+                "matched_size": sess.get("matched_size") or (get_item_by_sku(sku or sess.get("matched_sku")) or {}).get("size_ligne", ""),
+                "quantity": sess.get("quantity") or 0,
+                "status": f"Quotation Requested ({sess.get('quantity')} Gross)" if sess.get("quantity") else "Chat Active",
                 "notes": text if msg_type == "text" else "",
                 "chat_messages": []
             }
@@ -110,12 +132,17 @@ def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text
                 entry["buyer_name"] = buyer_name
             if photo_b64 and sender == "buyer":
                 entry["photo_b64"] = photo_b64
-            if sku and sku != "Inquiry":
-                entry["matched_sku"] = sku
-                m_item = get_item_by_sku(sku)
+            active_sku = sku or sess.get("matched_sku")
+            if active_sku and active_sku != "Inquiry":
+                entry["matched_sku"] = active_sku
+                m_item = get_item_by_sku(active_sku)
                 if m_item:
                     entry["matched_name"] = m_item.get("name", entry.get("matched_name", ""))
-                    entry["matched_size"] = m_item.get("size_ligne", entry.get("matched_size", ""))
+            if sess.get("matched_size"):
+                entry["matched_size"] = sess.get("matched_size")
+            if sess.get("quantity"):
+                entry["quantity"] = sess.get("quantity")
+                entry["status"] = f"Quotation Requested ({sess.get('quantity'):,} Gross)"
 
         if "chat_messages" not in entry or not isinstance(entry["chat_messages"], list):
             entry["chat_messages"] = []
@@ -256,6 +283,8 @@ async def process_incoming_whatsapp_message(value: dict):
             session["matched_sku"] = matched_item["sku"]
             session["matched_name"] = matched_item["name"]
             session["matched_size"] = matched_item.get("size_ligne", "")
+            session["last_active_sku"] = matched_item["sku"]
+            session["quantity"] = None # Reset quantity for the newly shared sample
             session["waiting_for_similar_permission"] = False
             session["waiting_for_similar_approval"] = False
             
@@ -400,25 +429,54 @@ async def process_incoming_whatsapp_message(value: dict):
                 print(f"📤 Customer rejected options. Offered custom mfg check and asked quantity without MOQ to {from_phone}")
                 return
 
+            # Check if customer specified quantity ambiguously without selecting Option 1 or Option 2 (Scenario B)
+            opt1_match = bool(re.search(r'\b(?:option\s*1|pehla|first|1st)\b', lower_text) or "136" in lower_text or re.search(r'(?<!\d)1(?!\d)', lower_text))
+            opt2_match = bool(re.search(r'\b(?:option\s*2|doosra|second|2nd)\b', lower_text) or "137" in lower_text or "139" in lower_text or re.search(r'(?<!\d)2(?!\d)', lower_text))
+            
+            gross_m = re.search(r'(\d+)\s*(?:gross|gr)', lower_text)
+            pcs_m = re.search(r'(\d+)\s*(?:pcs|pieces)', lower_text)
+            if (gross_m or pcs_m) and not (opt1_match or opt2_match):
+                q_val = int(gross_m.group(1)) if gross_m else max(1, round(int(pcs_m.group(1)) / 144))
+                session["quantity"] = q_val
+                alts = [get_item_by_sku(s) for s in session.get("suggested_alternatives", [])]
+                alts = [a for a in alts if a]
+                alt_names = " ya ".join([f"Option {idx+1} ({a['name']})" for idx, a in enumerate(alts)])
+                reply = (
+                    f"Ji {salutation}, aapne *{q_val:,} Gross* quantity batayi hai.\n\n"
+                    f"Kripya confirm karein ki aapko {alt_names} me se kiske liye ye requirement chahiye?"
+                )
+                send_whatsapp_text(from_phone, reply)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply)
+                return
+
             # Check if customer approved Option 1 or Option 2
             selected_alt_sku = None
-            if "option 1" in lower_text or "pehla" in lower_text or "136" in lower_text or ("1" in lower_text and "2" not in lower_text):
+            if opt1_match and not opt2_match:
                 selected_alt_sku = session.get("suggested_alternatives", ["ABC-136"])[0] if session.get("suggested_alternatives") else "ABC-136"
-            elif "option 2" in lower_text or "doosra" in lower_text or "137" in lower_text or "139" in lower_text or ("2" in lower_text and "1" not in lower_text):
+            elif opt2_match and not opt1_match:
                 selected_alt_sku = session.get("suggested_alternatives", ["ABC-136", "ABC-137"])[1] if len(session.get("suggested_alternatives", [])) > 1 else "ABC-137"
             
             if selected_alt_sku:
                 sel_item = get_item_by_sku(selected_alt_sku) or SAMPLE_CATALOG[0]
                 session["matched_sku"] = sel_item["sku"]
                 session["matched_name"] = sel_item["name"]
+                session["has_photo"] = True
+                session["last_active_sku"] = sel_item["sku"]
                 session["waiting_for_similar_approval"] = False
                 
-                ack_msg = (
-                    f"Ji sir, aapka approval note kar liya hai: *{sel_item['name']}*.\n\n"
-                    f"Aapko iski kitni quantity chahiye? Hum turant iska best quotation prepare kar dete hain."
-                )
+                # Check if quantity was already stated
+                if session.get("quantity"):
+                    ack_msg = (
+                        f"Ji sir, aapka approval note kar liya hai: *{sel_item['name']}*.\n\n"
+                        f"Aapki *{session.get('quantity'):,} Gross* requirement ke according quotation process kar rahe hain."
+                    )
+                else:
+                    ack_msg = (
+                        f"Ji sir, aapka approval note kar liya hai: *{sel_item['name']}*.\n\n"
+                        f"Aapko iski kitni quantity chahiye? Hum turant iska best quotation prepare kar dete hain."
+                    )
                 send_whatsapp_text(from_phone, ack_msg)
-                print(f"📤 Customer approved {sel_item['sku']}. Asked for quantity.")
+                print(f"📤 Customer approved {sel_item['sku']}.")
                 return
 
         # SECTION 18.6: LATEST BUYER QUESTION PRIORITY & SALES TEAM CONTACT INQUIRY
@@ -805,6 +863,8 @@ async def process_incoming_whatsapp_message(value: dict):
             session["matched_sku"] = item["sku"]
             session["matched_name"] = item["name"]
             session["matched_size"] = item.get("size_ligne", "")
+            session["has_photo"] = True
+            session["last_active_sku"] = item["sku"]
             
             # If quantity is not yet mentioned in this message, send exact stock details & ask for quantity
             if not has_qty_in_msg:
@@ -834,19 +894,56 @@ async def process_incoming_whatsapp_message(value: dict):
         # Check Option selection
         if "option 1" in lower_text or "136" in lower_text:
             session["matched_sku"] = "ABC-136"
-            session["matched_name"] = "ABC-136 Agoya Shell Button"
+            session["matched_name"] = "ABC-136 White Pearl Agoya Shell Button (Bulk Stock)"
+            session["has_photo"] = True
+            session["last_active_sku"] = "ABC-136"
         elif "option 2" in lower_text or "139" in lower_text:
             session["matched_sku"] = "ABC-139"
             session["matched_name"] = "ABC-139 Natural White River Shell Button"
+            session["has_photo"] = True
+            session["last_active_sku"] = "ABC-139"
         elif "option 3" in lower_text or "137" in lower_text:
             session["matched_sku"] = "ABC-137"
             session["matched_name"] = "ABC-137 Caramel Gold MOP Shell Button"
+            session["has_photo"] = True
+            session["last_active_sku"] = "ABC-137"
         elif "141" in lower_text:
             session["matched_sku"] = "ABC-141"
             session["matched_name"] = "ABC-141 Smoky Grey River Shell Button"
+            session["has_photo"] = True
+            session["last_active_sku"] = "ABC-141"
         elif "142" in lower_text:
             session["matched_sku"] = "ABC-142"
             session["matched_name"] = "ABC-142 Turquoise Blue Tinted Shell Button"
+            session["has_photo"] = True
+            session["last_active_sku"] = "ABC-142"
+
+        # Parse size if stated (e.g. 14L, 18L, 24L, 11.5mm)
+        size_match = re.search(r'\b(\d{1,2}(?:\.\d+)?\s*(?:l|ligne|line|mm))\b', lower_text, re.IGNORECASE)
+        if size_match:
+            session["matched_size"] = size_match.group(1).upper().replace(" ", "")
+
+        # Scenario C: Buyer specifies/changes ONLY size without quantity
+        if size_match and not has_qty_in_msg and (session.get("matched_sku") or session.get("has_photo")):
+            item = get_item_by_sku(session.get("matched_sku"))
+            item_name = item.get("name") if item else session.get("matched_name", "button")
+            curr_size = session.get("matched_size")
+            curr_qty = session.get("quantity")
+            
+            if curr_qty:
+                reply = (
+                    f"Ji {salutation}, *{curr_size}* size update kar diya hai.\n\n"
+                    f"Aapki *{item_name}* (Size: *{curr_size}*) ke liye *{curr_qty:,} Gross* "
+                    f"requirement ka quotation update kar rahe hain."
+                )
+            else:
+                reply = (
+                    f"Ji {salutation}, *{curr_size}* size note kar liya hai *{item_name}* ke liye.\n\n"
+                    f"Aapko approximate kitni quantity (Gross me) chahiye hogi sir?"
+                )
+            send_whatsapp_text(from_phone, reply)
+            log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=session.get("matched_sku"))
+            return
 
         # If quantity stated in this message -> record in session
         if has_qty_in_msg:
@@ -858,31 +955,81 @@ async def process_incoming_whatsapp_message(value: dict):
                 val = int(general_num.group(1))
                 session["quantity"] = round(val / 144) if val > 1000 else val
 
-            try:
-                import datetime
-                ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
-                if os.path.exists(ds_path):
-                    with open(ds_path, "r", encoding="utf-8") as fp:
-                        ds = json.load(fp)
-                    ds["latest_whatsapp_inquiry"] = {
-                        "buyer_name": contact_name,
-                        "phone": from_phone,
-                        "sku": session.get("matched_sku", "ABC-137"),
-                        "qty_gross": session["quantity"],
-                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    with open(ds_path, "w", encoding="utf-8") as fp:
-                        json.dump(ds, fp, indent=2)
-            except Exception as e:
-                print(f"Error saving latest inquiry: {e}")
+            qty = session.get("quantity", 0)
 
-            if session.get("has_photo"):
-                reply = "Ji sir, aapki requirement samajh aa gayi hai. Hum iske according quotation check karte hain."
+            # Scenario B: Multiple products shared, buyer replies with ambiguous quantity
+            if session.get("waiting_for_similar_approval") and session.get("suggested_alternatives") and not session.get("matched_sku"):
+                alts = [get_item_by_sku(s) for s in session.get("suggested_alternatives", [])]
+                alts = [a for a in alts if a]
+                alt_options = " ya ".join([f"Option {idx+1} ({a['name']})" for idx, a in enumerate(alts)])
+                reply = (
+                    f"Ji {salutation}, aapne *{qty:,} Gross* quantity batayi hai.\n\n"
+                    f"Kripya confirm karein ki aapko {alt_options} me se kiske liye ye requirement chahiye?"
+                )
                 send_whatsapp_text(from_phone, reply)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply)
+                return
+
+            active_sku = session.get("matched_sku") or session.get("last_active_sku")
+
+            # Scenario A / D: Active product exists OR photo was shared
+            if active_sku or session.get("has_photo"):
+                item = get_item_by_sku(active_sku) if active_sku else None
+                item_name = item.get("name") if item else session.get("matched_name", "selected button")
+                size_val = session.get("matched_size")
+                size_str = f" in *{size_val}*" if size_val else ""
+
+                stock_gross = item.get("stock_gross", 0) if item else 0
+                rate = item.get("rate_per_gross", 0) if item else 0
+
+                # Update live inquiry in data_store.json so Tab 5 1-Click Quote is updated
+                try:
+                    import datetime
+                    ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
+                    if os.path.exists(ds_path):
+                        with open(ds_path, "r", encoding="utf-8") as fp:
+                            ds = json.load(fp)
+                        ds["latest_whatsapp_inquiry"] = {
+                            "buyer_name": contact_name,
+                            "phone": from_phone,
+                            "sku": active_sku or "ABC-136",
+                            "size": size_val or "",
+                            "qty_gross": qty,
+                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        # Also update matching inquiry in live_whatsapp_inquiries
+                        clean_p = re.sub(r'\D', '', str(from_phone))
+                        for inq in ds.get("live_whatsapp_inquiries", []):
+                            inq_p = re.sub(r'\D', '', str(inq.get("phone", "")))
+                            if inq_p and (inq_p == clean_p or inq_p.endswith(clean_p[-10:])):
+                                inq["quantity"] = qty
+                                if size_val:
+                                    inq["matched_size"] = size_val
+                                if active_sku:
+                                    inq["matched_sku"] = active_sku
+                                    inq["matched_name"] = item_name
+                                inq["status"] = f"Quotation Requested ({qty:,} Gross)"
+                                break
+                        with open(ds_path, "w", encoding="utf-8") as fp:
+                            json.dump(ds, fp, indent=2)
+                except Exception as e:
+                    print(f"Error updating persistent inquiry: {e}")
+
+                # Real stock details without inventing false commitments
+                stock_line = f"• Godown Ready Stock: *{stock_gross:,} Gross*\n• Standard Rate: *₹{rate} / Gross*\n\n" if item else ""
+                reply = (
+                    f"Ji {salutation}, aapki *{item_name}*{size_str} ke liye *{qty:,} Gross* "
+                    f"({qty*144:,} Pcs) ki requirement note kar li hai.\n\n"
+                    f"{stock_line}"
+                    f"Hum iska official Proforma Quotation prepare kar rahe hain."
+                )
+                send_whatsapp_text(from_phone, reply)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=active_sku)
                 return
             else:
                 reply = "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
                 send_whatsapp_text(from_phone, reply)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply)
                 return
 
         # Courtesy & Acknowledgement
@@ -891,27 +1038,30 @@ async def process_incoming_whatsapp_message(value: dict):
             "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
             "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h"
         ]):
+            courtesy_cnt = session.get("courtesy_count", 0) + 1
+            session["courtesy_count"] = courtesy_cnt
+            
+            if courtesy_cnt > 1:
+                # If buyer repeats 'ok', keep response human and concise (no robotic repetition)
+                reply = f"Ji {salutation} 👍"
+                send_whatsapp_text(from_phone, reply)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply)
+                return
+                
             if session.get("has_address") and not session.get("quantity"):
-                send_whatsapp_text(
-                    from_phone,
-                    f"Ji bilkul {salutation}! Sample dispatch ki details aapse share kar denge. Dhanyawad sir! 🙏"
-                )
+                reply = f"Ji bilkul {salutation}! Sample dispatch ki details aapse share kar denge. Dhanyawad sir! 🙏"
             elif session.get("quantity"):
-                send_whatsapp_text(
-                    from_phone,
-                    f"Ji bilkul {salutation}! Quotation ready hote hi hum turant aapse share karenge. Dhanyawad sir! 🙏"
-                )
+                reply = f"Ji bilkul {salutation}! Quotation ready hote hi hum turant aapse share karenge. Dhanyawad sir! 🙏"
             else:
-                send_whatsapp_text(
-                    from_phone,
-                    f"Ji bilkul {salutation}! Dhanyawad. Koi bhi requirement ya query ho toh zaroor batayein sir. 🙏"
-                )
+                reply = f"Ji bilkul {salutation}! Dhanyawad. Koi bhi requirement ya query ho toh zaroor batayein sir. 🙏"
+            send_whatsapp_text(from_phone, reply)
+            log_chat_event(from_phone, contact_name, "bot", "text", reply)
             return
             
         # General greeting / assistance
         else:
-            if session.get("has_photo") or session.get("quantity") or session.get("history_count", 0) > 1:
-                if session.get("has_photo") and not session.get("quantity"):
+            if session.get("has_photo") or session.get("matched_sku") or session.get("quantity") or session.get("history_count", 0) > 1:
+                if (session.get("has_photo") or session.get("matched_sku")) and not session.get("quantity"):
                     if session.get("waiting_for_custom_mfg_qty"):
                         send_whatsapp_text(
                             from_phone,
@@ -927,7 +1077,7 @@ async def process_incoming_whatsapp_message(value: dict):
                             from_phone,
                             f"Ji {salutation}, aapko approximate kitni quantity ki requirement rahegi?"
                         )
-                elif not session.get("has_photo") and session.get("quantity"):
+                elif not session.get("has_photo") and not session.get("matched_sku") and session.get("quantity"):
                     send_whatsapp_text(
                         from_phone,
                         "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."

@@ -827,30 +827,67 @@ with tabs[0]:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ---------------- LIVE WHATSAPP CONVERSATION STREAM (TOP SECTION) ----------------
+    # ---------------- REAL-TIME SMARTPHONE WHATSAPP LIVE STREAM ----------------
     if wa_inqs_all:
-        with st.container():
-            st.markdown("### 💬 Live WhatsApp Customer Chat Stream (रियल-टाइम बातचीत)")
-            st.caption("सॉफ्टवेयर ऑपरेटर यहाँ देख सकते हैं कि किस ग्राहक से क्या बातचीत चल रही है:")
+        @st.fragment(run_every=4)
+        def render_live_whatsapp_phone_hub():
+            try:
+                sync_live_whatsapp_inquiries()
+            except Exception:
+                pass
+            inqs = list(st.session_state.get("live_whatsapp_inquiries", []))
+            if not inqs:
+                return
+                
+            st.markdown("### 📱 Live WhatsApp Mobile Phone Simulator (रियल-टाइम ग्राहक बातचीत)")
+            st.caption("जैसे ही ग्राहक WhatsApp पर मैसेज या फोटो भेजेगा, वह ऑटोमैटिक इस फ़ोन स्क्रीन पर लाइव आ जाएगा:")
             
-            c_sel1, c_sel2 = st.columns([3, 1])
-            with c_sel1:
-                buyer_labels = [f"👤 {x.get('buyer_name', 'Customer')} (+{x.get('phone', '')}) — SKU: {x.get('matched_sku', 'Inquiry')}" for x in wa_inqs_all]
-                selected_label = st.selectbox("ग्राहक चुनें:", buyer_labels, index=0, key="live_chat_buyer_selector")
+            col_phone, col_panel = st.columns([1.1, 1.2])
+            
+            with col_panel:
+                buyer_labels = [f"👤 {x.get('buyer_name', 'Customer')} (+{x.get('phone', '')}) — SKU: {x.get('matched_sku', 'Inquiry')}" for x in inqs]
+                selected_label = st.selectbox("चुनें कि किस ग्राहक की बातचीत देखनी है:", buyer_labels, index=0, key="live_chat_phone_selector")
                 sel_idx = buyer_labels.index(selected_label)
-                active_inq = wa_inqs_all[sel_idx]
-            with c_sel2:
-                st.write("")
-                if st.button("🔄 Refresh Live Chat", key="btn_top_refresh_chat", use_container_width=True):
-                    sync_live_whatsapp_inquiries()
-                    st.rerun()
-            
-            # Show live conversation box
-            st.info(f"🟢 **Active Chat with {active_inq.get('buyer_name', 'Customer')}** (+{active_inq.get('phone', '')}) • Last Update: {active_inq.get('timestamp', 'Today')}")
-            
-            # Message container
-            chat_box = st.container(height=380, border=True)
-            with chat_box:
+                active_inq = inqs[sel_idx]
+                
+                # Details Panel
+                st.markdown(f"""
+                <div style="background: #FFFFFF; border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-weight: 800; font-size: 16px; color: #0F172A;">{active_inq.get('buyer_name', 'Customer')}</span>
+                        <span style="background: #DCFCE7; color: #166534; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px;">🟢 Live Auto-Sync (4s)</span>
+                    </div>
+                    <div style="font-size: 13px; color: #475569; margin-bottom: 6px;">
+                        <b>Phone:</b> <span style="font-family: monospace;">+{active_inq.get('phone', '')}</span> &nbsp;|&nbsp; <b>Time:</b> {active_inq.get('timestamp', 'Today')}
+                    </div>
+                    <div style="font-size: 13px; color: #475569; margin-bottom: 6px;">
+                        <b>Matched SKU:</b> <span style="color: #0284C7; font-weight: 700;">{active_inq.get('matched_sku', 'Inquiry')}</span> ({active_inq.get('matched_name', '')})
+                    </div>
+                    <div style="font-size: 13px; color: #475569;">
+                        <b>Requested Qty:</b> <span style="color: #16A34A; font-weight: 700;">{active_inq.get('quantity') or 0:,} Gross</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                c_p1, c_p2 = st.columns(2)
+                with c_p1:
+                    if st.button("🧾 1-Click Quote (Tab 5)", key="btn_hub_quote", type="primary", use_container_width=True):
+                        st.session_state["preset_quote_buyer"] = active_inq.get('buyer_name', '')
+                        st.session_state["preset_quote_phone"] = active_inq.get('phone', '')
+                        st.session_state["preset_quote_sku"] = active_inq.get('matched_sku', '')
+                        st.session_state["preset_quote_qty"] = active_inq.get('quantity') or 200
+                        st.success(f"✅ {active_inq.get('buyer_name')} का डेटा लोड हो गया! ऊपर Tab 5 पर जाएँ।")
+                with c_p2:
+                    clean_ph = re.sub(r'\D', '', str(active_inq.get('phone', '')))
+                    if clean_ph:
+                        st.markdown(f"""
+                        <a href="https://wa.me/{clean_ph}" target="_blank" style="display: block; text-align: center; background: #25D366; color: white; text-decoration: none; padding: 9px 12px; border-radius: 7px; font-weight: 700; font-size: 13px; box-shadow: 0 2px 4px rgba(37,211,102,0.2);">
+                            💬 Open WhatsApp Web
+                        </a>
+                        """, unsafe_allow_html=True)
+                        
+            with col_phone:
+                import base64
                 msgs = active_inq.get("chat_messages", [])
                 if not msgs:
                     p_time = active_inq.get("timestamp", "Today")
@@ -867,72 +904,92 @@ with tabs[0]:
                         },
                         {
                             "sender": "bot",
-                            "sender_name": "ABC Buttons AI Bot",
+                            "sender_name": "ABC Buttons Assistant",
                             "type": "image" if active_inq.get("matched_sku") and active_inq.get("matched_sku") != "Custom / Non-Catalog" else "text",
                             "sku": active_inq.get("matched_sku"),
-                            "text": f"Ji sir, aapke share kiye hue sample ka exact matching stock hamare paas available hai: *{active_inq.get('matched_name', 'Catalog Button')}*.\n\nAapko kitni quantity chahiye?",
+                            "text": f"Ji sir, aapke sample ka matching stock available hai: {active_inq.get('matched_name', 'Catalog Button')}.\n\nAapko kitni quantity chahiye?",
                             "time": p_time
                         }
                     ]
                     if active_inq.get("quantity"):
-                        msgs.append({
-                            "sender": "buyer",
-                            "sender_name": active_inq.get("buyer_name", "Customer"),
-                            "type": "text",
-                            "text": f"{active_inq.get('quantity')} Gross",
-                            "time": p_time
-                        })
-                        msgs.append({
-                            "sender": "bot",
-                            "sender_name": "ABC Buttons AI Bot",
-                            "type": "text",
-                            "text": f"Ji {active_inq.get('buyer_name', 'Sir')}, aapki {active_inq.get('quantity')} Gross ({active_inq.get('quantity')*144:,} Pieces) ki requirement note kar li hai. Hum turant best quotation taiyar kar rahe hain.",
-                            "time": p_time
-                        })
-                
+                        msgs.append({"sender": "buyer", "sender_name": active_inq.get("buyer_name", "Customer"), "type": "text", "text": f"{active_inq.get('quantity')} Gross", "time": p_time})
+                        msgs.append({"sender": "bot", "sender_name": "ABC Buttons Assistant", "type": "text", "text": f"Ji {active_inq.get('buyer_name', 'Sir')}, {active_inq.get('quantity')} Gross ki requirement note kar li hai.", "time": p_time})
+                        
+                bubbles_html = ""
                 for m in msgs:
                     s = m.get("sender", "buyer")
-                    if s == "buyer":
-                        with st.chat_message("user", avatar="👤"):
-                            st.markdown(f"**{m.get('sender_name', 'Customer')}** &nbsp; <small style='color: #64748b;'>{m.get('time', '')}</small>", unsafe_allow_html=True)
-                            if m.get("photo_b64"):
-                                try:
-                                    import base64
-                                    from io import BytesIO
-                                    st.image(BytesIO(base64.b64decode(m["photo_b64"])), caption="Customer Sample Photo", width=220)
-                                except Exception:
-                                    pass
-                            if m.get("text"):
-                                st.write(m.get("text"))
+                    is_buyer = (s == "buyer")
+                    m_time = m.get("time", "")
+                    m_text = m.get("text", "").replace("\n", "<br>")
+                    
+                    img_tag = ""
+                    if m.get("photo_b64") and is_buyer:
+                        img_tag = f'<img src="data:image/jpeg;base64,{m["photo_b64"]}" style="width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 4px;" />'
+                    elif m.get("sku") and not is_buyer and m.get("sku") != "Custom / Non-Catalog":
+                        s_path = os.path.join(IMG_DIR, f"{m['sku']}.jpg")
+                        if os.path.exists(s_path):
+                            with open(s_path, "rb") as ifp:
+                                b64_cat = base64.b64encode(ifp.read()).decode("utf-8")
+                            img_tag = f'<img src="data:image/jpeg;base64,{b64_cat}" style="width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 4px;" />'
+                            
+                    if is_buyer:
+                        bubbles_html += f"""
+                        <div style="align-self: flex-start; background: #FFFFFF; color: #0F172A; border-radius: 0 10px 10px 10px; padding: 7px 10px; max-width: 82%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
+                            <div style="font-size: 10px; font-weight: 700; color: #0284C7; margin-bottom: 2px;">{m.get('sender_name', 'Customer')}</div>
+                            {img_tag}
+                            <div>{m_text}</div>
+                            <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time}</div>
+                        </div>
+                        """
                     else:
-                        with st.chat_message("assistant", avatar="🤖"):
-                            st.markdown(f"**ABC Buttons Assistant** &nbsp; <small style='color: #64748b;'>{m.get('time', '')}</small>", unsafe_allow_html=True)
-                            if m.get("sku") and m.get("sku") != "Custom / Non-Catalog":
-                                sku_code = m["sku"]
-                                c_img = os.path.join(IMG_DIR, f"{sku_code}.jpg")
-                                if os.path.exists(c_img):
-                                    st.image(c_img, caption=f"Stock Matched: {sku_code}", width=220)
-                            if m.get("text"):
-                                st.write(m.get("text"))
-
-            # Quick Action Bar
-            c_act1, c_act2 = st.columns([1, 1])
-            with c_act1:
-                if st.button("🧾 1-Click Quote for this Customer (Tab 5)", key="btn_top_chat_quote", type="primary", use_container_width=True):
-                    st.session_state["preset_quote_buyer"] = active_inq.get('buyer_name', '')
-                    st.session_state["preset_quote_phone"] = active_inq.get('phone', '')
-                    st.session_state["preset_quote_sku"] = active_inq.get('matched_sku', '')
-                    st.session_state["preset_quote_qty"] = active_inq.get('quantity') or 200
-                    st.success(f"✅ {active_inq.get('buyer_name')} का डेटा लोड हो गया! ऊपर Tab 5 पर जाएँ।")
-            with c_act2:
-                clean_ph = re.sub(r'\D', '', str(active_inq.get('phone', '')))
-                if clean_ph:
-                    st.markdown(f"""
-                    <a href="https://wa.me/{clean_ph}" target="_blank" style="display: block; text-align: center; background: #25D366; color: white; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; font-size: 14px;">
-                        💬 Open Direct WhatsApp Chat
-                    </a>
-                    """, unsafe_allow_html=True)
+                        bubbles_html += f"""
+                        <div style="align-self: flex-end; background: #DCF8C6; color: #0F172A; border-radius: 10px 0 10px 10px; padding: 7px 10px; max-width: 84%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
+                            {img_tag}
+                            <div>{m_text}</div>
+                            <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time} <span style="color: #38BDF8; font-weight: 700;">✓✓</span></div>
+                        </div>
+                        """
+                        
+                b_initials = (active_inq.get('buyer_name', 'C')[:2]).upper()
+                phone_html = f"""
+                <div style="width: 360px; max-width: 100%; margin: 0 auto; background: #0F172A; border-radius: 36px; padding: 10px 8px 12px 8px; box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.45); border: 2.5px solid #334155;">
+                    <div style="width: 80px; height: 12px; background: #000000; border-radius: 10px; margin: 0 auto 8px auto;"></div>
+                    <div style="background: #075E54; padding: 8px 12px; border-radius: 14px 14px 0 0; display: flex; justify-content: space-between; align-items: center; color: white;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 15px;">←</span>
+                            <div style="width: 30px; height: 30px; border-radius: 50%; background: #128C7E; color: white; font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; border: 1.5px solid #25D366;">
+                                {b_initials}
+                            </div>
+                            <div>
+                                <div style="font-weight: 700; font-size: 13px; color: #FFFFFF; line-height: 1.2;">{active_inq.get('buyer_name', 'Customer')}</div>
+                                <div style="font-size: 10px; color: #A7F3D0;">online ●</div>
+                            </div>
+                        </div>
+                        <div style="font-size: 14px; display: flex; gap: 10px; color: #FFFFFF; opacity: 0.9;">
+                            <span>📹</span>
+                            <span>📞</span>
+                            <span>⋮</span>
+                        </div>
+                    </div>
+                    <div style="background-color: #EFEAE2; background-image: radial-gradient(#CBD5E1 0.75px, transparent 0.75px); background-size: 16px 16px; height: 380px; overflow-y: auto; padding: 12px 8px; display: flex; flex-direction: column;">
+                        <div style="align-self: center; background: #E1F3FB; color: #0369A1; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); margin-bottom: 8px;">
+                            TODAY
+                        </div>
+                        {bubbles_html}
+                    </div>
+                    <div style="background: #F0F2F5; padding: 6px 8px; border-radius: 0 0 22px 22px; display: flex; align-items: center; gap: 6px; border-top: 1px solid #E2E8F0;">
+                        <span style="font-size: 16px;">😊</span>
+                        <div style="color: #94A3B8; font-size: 12px; flex-grow: 1; background: #FFFFFF; padding: 4px 8px; border-radius: 14px; border: 1px solid #E2E8F0;">Type a message...</div>
+                        <span style="font-size: 14px;">📎</span>
+                        <span style="font-size: 14px;">📷</span>
+                        <div style="width: 28px; height: 28px; border-radius: 50%; background: #00A884; color: white; display: flex; align-items: center; justify-content: center; font-size: 13px;">🎤</div>
+                    </div>
+                </div>
+                """
+                st.html(phone_html)
             st.markdown("---")
+
+        render_live_whatsapp_phone_hub()
 
     # Search & Filter Input
     search_q = st.text_input("🔍 ग्राहक के नाम, फ़ोन नंबर या बटन SKU से खोजें:", placeholder="उदा. Anoop, 93157, या ABC-136...")
