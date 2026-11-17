@@ -107,6 +107,18 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_inquiries_phone ON live_inquiries (phone);
         """)
+
+        # Ensure enterprise CRM columns exist
+        for col_def in [
+            ("live_inquiries", "human_takeover", "INTEGER DEFAULT 0"),
+            ("live_inquiries", "assigned_salesman", "TEXT DEFAULT 'Unassigned'"),
+            ("live_inquiries", "crm_status", "TEXT DEFAULT 'New Inquiry'"),
+            ("buyer_sessions", "human_takeover", "INTEGER DEFAULT 0")
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]};")
+            except sqlite3.OperationalError:
+                pass
         
     # Migrate existing data from data_store.json if database is empty
     migrate_from_data_store()
@@ -408,6 +420,20 @@ def load_live_inquiries_db() -> list:
     except Exception as e:
         print(f"Error loading inquiries from SQLite: {e}")
         return []
+
+def update_inquiry_crm_meta(phone: str, human_takeover: int = None, assigned_salesman: str = None, crm_status: str = None):
+    """Updates CRM metadata (Human Takeover, Salesperson, Deal Stage) for a specific buyer in SQLite."""
+    key = normalize_phone(phone)
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db_connection() as conn:
+        if human_takeover is not None:
+            conn.execute("UPDATE live_inquiries SET human_takeover = ?, updated_at = ? WHERE phone = ?", (int(human_takeover), now_str, key))
+            conn.execute("UPDATE buyer_sessions SET human_takeover = ?, updated_at = ? WHERE phone = ?", (int(human_takeover), now_str, key))
+        if assigned_salesman is not None:
+            conn.execute("UPDATE live_inquiries SET assigned_salesman = ?, updated_at = ? WHERE phone = ?", (assigned_salesman, now_str, key))
+        if crm_status is not None:
+            conn.execute("UPDATE live_inquiries SET crm_status = ?, updated_at = ? WHERE phone = ?", (crm_status, now_str, key))
+    export_to_data_store_json()
 
 def export_to_data_store_json():
     """Safe atomic sync from SQLite to data_store.json using temporary file."""

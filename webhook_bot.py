@@ -175,6 +175,25 @@ async def process_incoming_whatsapp_message(value: dict):
                 session["matched_size"] = quoted_prod.get("size_options")
             print(f"🎯 Resolved quoted reply {context_id} -> {quoted_prod['sku']}")
     
+    # ---------------- HUMAN TAKEOVER CHECK ----------------
+    if session.get("human_takeover"):
+        print(f"🛑 Human Takeover Active for {from_phone}. AI Bot auto-reply is PAUSED.")
+        if msg_type == "text":
+            text_body = msg.get("text", {}).get("body", "")
+            log_chat_event(from_phone, contact_name, "buyer", "text", text_body)
+        elif msg_type == "image":
+            caption = msg.get("image", {}).get("caption", "")
+            media_id = msg.get("image", {}).get("id")
+            try:
+                img_bytes = download_whatsapp_media(media_id)
+                import base64
+                b64_img = base64.b64encode(img_bytes).decode("utf-8")
+                log_chat_event(from_phone, contact_name, "buyer", "image", caption or "📷 [Buyer sent button photo]", photo_b64=b64_img)
+            except Exception as e:
+                print(f"Error logging image under takeover: {e}")
+        save_buyer_session(from_phone, session)
+        return
+    
     # ---------------- CASE 1: BUYER SENT A PHOTO ----------------
     if msg_type == "image":
         media_id = msg.get("image", {}).get("id")

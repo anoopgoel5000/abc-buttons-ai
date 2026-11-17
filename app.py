@@ -889,6 +889,84 @@ with tabs[0]:
                             💬 Open WhatsApp Web
                         </a>
                         """, unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                # ---------------- ENTERPRISE CRM CONTROLS ----------------
+                # 1. Human Takeover Mode Toggle
+                is_takeover = bool(active_inq.get("human_takeover", 0))
+                c_t1, c_t2 = st.columns([1.4, 1])
+                with c_t1:
+                    if is_takeover:
+                        st.markdown("""
+                        <div style="background: #FEE2E2; border: 1.5px solid #FCA5A5; border-radius: 8px; padding: 6px 10px;">
+                            <span style="color: #991B1B; font-weight: 800; font-size: 13px;">🛑 Human Takeover</span><br>
+                            <span style="color: #B91C1C; font-size: 11px;">(AI Bot Auto-Reply Paused)</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("""
+                        <div style="background: #ECFDF5; border: 1.5px solid #A7F3D0; border-radius: 8px; padding: 6px 10px;">
+                            <span style="color: #065F46; font-weight: 800; font-size: 13px;">🤖 AI Bot Active</span><br>
+                            <span style="color: #047857; font-size: 11px;">(24/7 Smart Auto-Reply)</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                with c_t2:
+                    st.write("")
+                    if is_takeover:
+                        if st.button("▶️ Resume AI", key=f"btn_resume_{active_inq['phone']}", help="Re-enables AI automatic replies"):
+                            import db
+                            db.update_inquiry_crm_meta(active_inq['phone'], human_takeover=0)
+                            active_inq['human_takeover'] = 0
+                            st.toast("✅ AI Bot resumed for this customer")
+                            st.rerun()
+                    else:
+                        if st.button("🛑 Take Over", key=f"btn_pause_{active_inq['phone']}", help="Pauses AI bot so human operator can reply directly"):
+                            import db
+                            db.update_inquiry_crm_meta(active_inq['phone'], human_takeover=1)
+                            active_inq['human_takeover'] = 1
+                            st.toast("🛑 AI Bot paused. You are now controlling this chat.")
+                            st.rerun()
+
+                # 2. Direct Operator WhatsApp Dispatch
+                st.markdown("<div style='margin-top: 10px; font-weight: 700; font-size: 13px; color: #1E293B;'>💬 Send Direct Message to Customer:</div>", unsafe_allow_html=True)
+                c_msg_in, c_msg_btn = st.columns([3, 1])
+                with c_msg_in:
+                    op_reply = st.text_input("Reply text:", placeholder="Type WhatsApp message...", label_visibility="collapsed", key=f"op_text_{active_inq['phone']}")
+                with c_msg_btn:
+                    if st.button("📤 Send", key=f"btn_send_op_{active_inq['phone']}", type="primary", use_container_width=True):
+                        if op_reply and op_reply.strip():
+                            from whatsapp_service import send_whatsapp_text
+                            send_whatsapp_text(active_inq['phone'], op_reply.strip())
+                            import db
+                            db.sync_chat_event_db(active_inq['phone'], active_inq.get('buyer_name', 'Customer'), 'bot', 'text', op_reply.strip())
+                            st.success("✅ Sent via WhatsApp!")
+                            st.rerun()
+
+                # 3. Salesperson Assignment & Deal Stage
+                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+                c_sp, c_stage = st.columns(2)
+                with c_sp:
+                    sales_team = ["Unassigned", "Rahul Sharma (Field Sales)", "Amit Verma (Export Desk)", "Pooja (Sampling Coordinator)", "Gaurav (Production Liaison)"]
+                    cur_sp = active_inq.get("assigned_salesman") or "Unassigned"
+                    cur_sp_idx = sales_team.index(cur_sp) if cur_sp in sales_team else 0
+                    new_sp = st.selectbox("👤 Salesperson:", sales_team, index=cur_sp_idx, key=f"sp_sel_{active_inq['phone']}")
+                    if new_sp != cur_sp:
+                        import db
+                        db.update_inquiry_crm_meta(active_inq['phone'], assigned_salesman=new_sp)
+                        active_inq['assigned_salesman'] = new_sp
+                        st.toast(f"✅ Assigned to {new_sp}")
+                        st.rerun()
+                with c_stage:
+                    stages = ["New Inquiry", "Sampling Requested", "Quotation Sent", "Under Follow-up", "Order Closed", "Inactive / Archived"]
+                    cur_st = active_inq.get("crm_status") or "New Inquiry"
+                    cur_st_idx = stages.index(cur_st) if cur_st in stages else 0
+                    new_st = st.selectbox("📌 Deal Stage:", stages, index=cur_st_idx, key=f"stage_sel_{active_inq['phone']}")
+                    if new_st != cur_st:
+                        import db
+                        db.update_inquiry_crm_meta(active_inq['phone'], crm_status=new_st)
+                        active_inq['crm_status'] = new_st
+                        st.toast(f"✅ Stage updated: {new_st}")
+                        st.rerun()
                         
             with col_phone:
                 import base64
@@ -919,47 +997,47 @@ with tabs[0]:
                     """
                 else:
                     for m in msgs:
-                    s = m.get("sender", "buyer")
-                    is_buyer = (s == "buyer")
-                    m_time = m.get("time", "")
-                    m_text = m.get("text", "").replace("\n", "<br>")
-                    
-                    img_tag = ""
-                    if m.get("photo_b64") and is_buyer:
-                        img_tag = f'<img src="data:image/jpeg;base64,{m["photo_b64"]}" style="width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 4px;" />'
-                    elif m.get("sku") and not is_buyer and m.get("sku") != "Custom / Non-Catalog":
-                        s_path = os.path.join(IMG_DIR, f"{m['sku']}.jpg")
-                        if os.path.exists(s_path):
-                            with open(s_path, "rb") as ifp:
-                                b64_cat = base64.b64encode(ifp.read()).decode("utf-8")
-                            img_tag = f'<img src="data:image/jpeg;base64,{b64_cat}" style="width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 4px;" />'
-                            
-                    if is_buyer:
-                        bubbles_html += f"""
-                        <div style="align-self: flex-start; background: #FFFFFF; color: #0F172A; border-radius: 0 10px 10px 10px; padding: 7px 10px; max-width: 82%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
-                            <div style="font-size: 10px; font-weight: 700; color: #0284C7; margin-bottom: 2px;">{m.get('sender_name', 'Customer')}</div>
-                            {img_tag}
-                            <div>{m_text}</div>
-                            <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time}</div>
-                        </div>
-                        """
-                    else:
-                        m_stat = m.get("status", "")
-                        if m_stat == "FAILED":
-                            tick_html = '<span style="color: #EF4444; font-weight: 700; font-size: 10px;">⚠️ Failed</span>'
-                        elif m_stat == "SENT":
-                            tick_html = '<span style="color: #64748B; font-weight: 700;">✓</span>'
-                        elif m_stat == "DELIVERED":
-                            tick_html = '<span style="color: #64748B; font-weight: 700;">✓✓</span>'
+                        s = m.get("sender", "buyer")
+                        is_buyer = (s == "buyer")
+                        m_time = m.get("time", "")
+                        m_text = m.get("text", "").replace("\n", "<br>")
+                        
+                        img_tag = ""
+                        if m.get("photo_b64") and is_buyer:
+                            img_tag = f'<img src="data:image/jpeg;base64,{m["photo_b64"]}" style="width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 4px;" />'
+                        elif m.get("sku") and not is_buyer and m.get("sku") != "Custom / Non-Catalog":
+                            s_path = os.path.join(IMG_DIR, f"{m['sku']}.jpg")
+                            if os.path.exists(s_path):
+                                with open(s_path, "rb") as ifp:
+                                    b64_cat = base64.b64encode(ifp.read()).decode("utf-8")
+                                img_tag = f'<img src="data:image/jpeg;base64,{b64_cat}" style="width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-bottom: 4px;" />'
+                                
+                        if is_buyer:
+                            bubbles_html += f"""
+                            <div style="align-self: flex-start; background: #FFFFFF; color: #0F172A; border-radius: 0 10px 10px 10px; padding: 7px 10px; max-width: 82%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
+                                <div style="font-size: 10px; font-weight: 700; color: #0284C7; margin-bottom: 2px;">{m.get('sender_name', 'Customer')}</div>
+                                {img_tag}
+                                <div>{m_text}</div>
+                                <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time}</div>
+                            </div>
+                            """
                         else:
-                            tick_html = '<span style="color: #38BDF8; font-weight: 700;">✓✓</span>'
-                        bubbles_html += f"""
-                        <div style="align-self: flex-end; background: #DCF8C6; color: #0F172A; border-radius: 10px 0 10px 10px; padding: 7px 10px; max-width: 84%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
-                            {img_tag}
-                            <div>{m_text}</div>
-                            <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time} {tick_html}</div>
-                        </div>
-                        """
+                            m_stat = m.get("status", "")
+                            if m_stat == "FAILED":
+                                tick_html = '<span style="color: #EF4444; font-weight: 700; font-size: 10px;">⚠️ Failed</span>'
+                            elif m_stat == "SENT":
+                                tick_html = '<span style="color: #64748B; font-weight: 700;">✓</span>'
+                            elif m_stat == "DELIVERED":
+                                tick_html = '<span style="color: #64748B; font-weight: 700;">✓✓</span>'
+                            else:
+                                tick_html = '<span style="color: #38BDF8; font-weight: 700;">✓✓</span>'
+                            bubbles_html += f"""
+                            <div style="align-self: flex-end; background: #DCF8C6; color: #0F172A; border-radius: 10px 0 10px 10px; padding: 7px 10px; max-width: 84%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
+                                {img_tag}
+                                <div>{m_text}</div>
+                                <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time} {tick_html}</div>
+                            </div>
+                            """
                         
                 b_initials = (active_inq.get('buyer_name', 'C')[:2]).upper()
                 phone_html = f"""
