@@ -498,21 +498,24 @@ class FrontFaceDesignMatcher:
             outer_shape = "square"
 
         # Front design estimation
-        front_design = im_features.get("front_design", "saucer_rim")
         is_engraved = False
         if any(w in q_lower for w in ["engraved", "logo", "carved", "embossed", "laser", "lettering"]):
             is_engraved = True
             front_design = "engraved_pattern"
         elif "shank" in q_lower:
             front_design = "shank_button"
-        elif "flat" in q_lower or "flat face" in q_lower:
+        elif any(w in q_lower for w in ["flat", "flat face", "smooth", "smooth face", "plain face", "no rim", "flat-face"]):
             front_design = "flat_face"
-        elif "raw" in q_lower or "rough" in q_lower or "chunky" in q_lower or "rustic" in q_lower:
+        elif any(w in q_lower for w in ["raw", "rough", "chunky", "rustic", "pitted"]):
             front_design = "raw_pitted_face"
+        elif any(w in q_lower for w in ["saucer", "recessed", "deep rim", "dish", "raised rim", "raised outer rim", "raised", "outer rim"]):
+            front_design = "saucer_rim"
         elif outer_shape == "rectangular_card":
             front_design = "hanger_card_display"
         elif outer_shape == "cowrie_oval":
             front_design = "kaudi_slit"
+        else:
+            front_design = im_features.get("front_design", "smooth_gloss_rim")
 
         # Color & pattern estimation
         color_family = im_features.get("color_family", "white")
@@ -682,7 +685,7 @@ class FrontFaceDesignMatcher:
                 "is_button": True,
                 "holes_detected": 2, # default baseline for shell buttons
                 "outer_shape": "round",
-                "front_design": "saucer_rim",
+                "front_design": "smooth_gloss_rim",
                 "color_family": color_family,
                 "color_pattern": color_pattern,
                 "apparent_material": apparent_material,
@@ -774,9 +777,12 @@ class FrontFaceDesignMatcher:
         if q_design == "shank_button":
             gates["design_gate"] = False
             mismatches.append(f"Construction Conflict: Sample is a shank button, but {profile['sku']} is a flat-hole button.")
-        elif q_design == "flat_face" and p_design in ["saucer_rim", "center_well_rim"]:
+        elif q_design in ["flat_face", "smooth_gloss_rim"] and p_design in ["saucer_rim", "center_well_rim"]:
             gates["design_gate"] = False
-            mismatches.append(f"Rim Conflict: Sample has completely flat face, but {profile['sku']} has raised {p_design.replace('_', ' ')}.")
+            mismatches.append(f"Rim Conflict: Customer sample has smooth/flat face, but {profile['sku']} has raised {p_design.replace('_', ' ')}.")
+        elif q_design in ["saucer_rim"] and p_design in ["flat_face", "smooth_gloss_rim"]:
+            gates["design_gate"] = False
+            mismatches.append(f"Rim Conflict: Customer sample has raised saucer rim, but {profile['sku']} has smooth/flat face.")
         elif q_design == "raw_pitted_face" and p_design in ["smooth_gloss_rim", "raised_rim"]:
             gates["design_gate"] = False
             mismatches.append(f"Texture Conflict: Sample is rough raw-textured, but {profile['sku']} is polished smooth.")
@@ -785,19 +791,27 @@ class FrontFaceDesignMatcher:
         q_color = q.get("color_family", "")
         p_color = profile.get("color_family", "")
         if not profile.get("is_card"):
-            # Never return black buttons as exact matches for clearly white buttons
-            if q_color in ["white", "white_cream", "white_pearl"] and p_color in ["black_charcoal", "grey_gunmetal"]:
+            white_colors = ["white", "white_cream", "white_pearl", "white_ivory", "white_amber"]
+            dark_colors = ["black_charcoal", "grey_gunmetal", "black", "midnight"]
+            turquoise_colors = ["turquoise_teal", "green_seafoam"]
+            pink_colors = ["pink_blush", "pink"]
+            gold_colors = ["gold_amber", "bronze_brown"]
+
+            if q_color in white_colors and p_color not in white_colors:
                 gates["color_gate"] = False
-                mismatches.append(f"Severe Color Conflict: Sample is White Pearl, but {profile['sku']} is Dark {p_color.replace('_', ' ').capitalize()}.")
-            elif q_color in ["black_charcoal", "grey_gunmetal"] and p_color in ["white", "white_cream", "white_pearl"]:
+                mismatches.append(f"Severe Color Conflict: Sample is White Pearl, but {profile['sku']} is {p_color.replace('_', ' ').capitalize()}.")
+            elif q_color in dark_colors and p_color not in dark_colors:
                 gates["color_gate"] = False
-                mismatches.append(f"Severe Color Conflict: Sample is Dark/Black, but {profile['sku']} is White Pearl.")
-            elif q_color == "turquoise_teal" and p_color in ["pink_blush", "gold_amber", "black_charcoal", "white"]:
+                mismatches.append(f"Severe Color Conflict: Sample is Dark/Black, but {profile['sku']} is {p_color.replace('_', ' ').capitalize()}.")
+            elif q_color in turquoise_colors and p_color not in turquoise_colors:
                 gates["color_gate"] = False
-                mismatches.append(f"Color Conflict: Sample is Turquoise Teal, but {profile['sku']} is {p_color.replace('_', ' ').capitalize()}.")
-            elif q_color == "pink_blush" and p_color in ["turquoise_teal", "green_seafoam", "black_charcoal", "olive_moss"]:
+                mismatches.append(f"Color Conflict: Sample is Turquoise/Teal, but {profile['sku']} is {p_color.replace('_', ' ').capitalize()}.")
+            elif q_color in pink_colors and p_color not in pink_colors:
                 gates["color_gate"] = False
                 mismatches.append(f"Color Conflict: Sample is Pink Blush, but {profile['sku']} is {p_color.replace('_', ' ').capitalize()}.")
+            elif q_color in gold_colors and p_color not in gold_colors:
+                gates["color_gate"] = False
+                mismatches.append(f"Color Conflict: Sample is Gold/Amber, but {profile['sku']} is {p_color.replace('_', ' ').capitalize()}.")
 
         # Gate 5: Non-Catalog Material Scope Gate
         q_mat = q.get("apparent_material", "")

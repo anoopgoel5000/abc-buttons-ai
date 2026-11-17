@@ -901,6 +901,18 @@ Return output strictly in JSON format with keys:
             res["top_candidates"] = build_top_3_candidates(res, target_bytes=image_bytes)
             return res
 
+    # If front-face engine identifies a POSSIBLE MATCH due to design/rim variance
+    if ff_res.get("decision_label") == "POSSIBLE MATCH":
+        res["decision_label"] = "POSSIBLE MATCH"
+        res["decision_explanation"] = ff_res.get("decision_explanation", "Some front-face attributes match, but exact identity is uncertain.")
+        res["match_status"] = "POSSIBLE_MATCH"
+        res["best_match_sku"] = ff_res.get("best_match_sku")
+        res["match_confidence"] = ff_res.get("match_confidence", 72)
+        res["match_reason"] = ff_res.get("match_reason", "Possible Match: Design variance exists.")
+        res["whatsapp_buyer_draft"] = ff_res.get("whatsapp_buyer_draft", "")
+        res["top_candidates"] = ff_res.get("top_candidates") or build_top_3_candidates(res, target_bytes=image_bytes)
+        return res
+
     # Assign Decision Label based on candidate confidence and gate status
     if res.get("best_match_sku") and res.get("match_confidence", 0) >= 80:
         res["decision_label"] = "EXACT DESIGN CANDIDATE"
@@ -1123,13 +1135,32 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
     is_dark_tone = any(d in color for d in ["black", "charcoal", "dark grey", "gunmetal", "black lip", "jet black", "dark"]) and not is_white_tone
 
     # Flagship Master SKU: ABC-139 (Natural White River Shell, 2-Hole with Raised Saucer Rim)
-    # If the button is white/cream/natural river shell with 2 holes or raised saucer rim: MUST BE ABC-139!
     if is_white_tone or ("shell" in raw_text and not is_dark_tone and not any(h in raw_text for h in ["turquoise", "pink", "violet", "caramel", "gold", "amber"])):
-        if is_2_hole or any(k in raw_text for k in ["river", "saucer", "raised rim", "recessed", "rim"]):
+        is_smooth_or_flat = any(s in raw_text for s in ["smooth", "flat", "plain face", "no rim", "flat face", "smooth face"])
+        has_saucer_rim = any(k in raw_text for k in ["saucer", "recessed", "deep rim", "raised saucer rim", "raised rim"])
+
+        # CRITICAL: Smooth flat-face buttons must NEVER match ABC-139 raised saucer rim!
+        if is_smooth_or_flat:
+            parsed["match_status"] = "MATCH_FOUND"
+            parsed["best_match_sku"] = "ABC-136"
+            parsed["match_confidence"] = 88
+            parsed["match_reason"] = "Smooth Pearl Polish Match: White Pearl Agoya Shell Button (SKU ABC-136). Smooth face without raised saucer rim."
+            parsed["alternative_sku"] = "ABC-139"
+            parsed["alternative_reason"] = "ABC-139 has a raised saucer rim and recessed center."
+            return _finalize_draft(parsed)
+        elif has_saucer_rim:
             parsed["match_status"] = "MATCH_FOUND"
             parsed["best_match_sku"] = "ABC-139"
-            parsed["match_confidence"] = 100
-            parsed["match_reason"] = "Deterministic Lock: Natural White River Shell Button (2-Hole with Raised Outer Rim / Saucer Rim)."
+            parsed["match_confidence"] = 92
+            parsed["match_reason"] = "Evidence-Based Match: Natural White River Shell Button (2-Hole with Raised Outer Rim / Saucer Rim)."
+            parsed["alternative_sku"] = "ABC-136"
+            parsed["alternative_reason"] = "ABC-136 is white agoya shell with smooth polish."
+            return _finalize_draft(parsed)
+        elif is_2_hole and any(k in raw_text for k in ["river", "saucer", "raised"]):
+            parsed["match_status"] = "MATCH_FOUND"
+            parsed["best_match_sku"] = "ABC-139"
+            parsed["match_confidence"] = 92
+            parsed["match_reason"] = "Evidence-Based Match: Natural White River Shell Button (2-Hole with Raised Outer Rim / Saucer Rim)."
             parsed["alternative_sku"] = "ABC-136"
             parsed["alternative_reason"] = "ABC-136 is high-volume white agoya shell available in both 2-hole and 4-hole."
             return _finalize_draft(parsed)
