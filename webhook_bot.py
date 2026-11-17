@@ -24,9 +24,22 @@ import db
 
 app = FastAPI(title="ABC Buttons WhatsApp Webhook Server")
 
-VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "abc_buttons_secret_2026")
+VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "")
 META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
-ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "abc_admin_secure_key_2026")
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
+
+# Load fallback from local .env if running locally and not in environment
+_env_file = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_file):
+    with open(_env_file, "r", encoding="utf-8") as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line.startswith("ADMIN_API_KEY=") and not ADMIN_API_KEY:
+                ADMIN_API_KEY = _line.split("=", 1)[1].strip()
+            elif _line.startswith("WEBHOOK_VERIFY_TOKEN=") and not VERIFY_TOKEN:
+                VERIFY_TOKEN = _line.split("=", 1)[1].strip()
+            elif _line.startswith("META_APP_SECRET=") and not META_APP_SECRET:
+                META_APP_SECRET = _line.split("=", 1)[1].strip()
 CAT_DIR = os.path.join(os.path.dirname(__file__), "catalog_images")
 DS_PATH = os.path.join(os.path.dirname(__file__), "data_store.json")
 
@@ -44,14 +57,16 @@ def verify_webhook_signature(body_bytes: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected_hash, calculated_hash)
 
 def verify_admin_auth(request: Request) -> bool:
-    """Verifies API key for administrative / destructive operations."""
+    """Verifies API key for administrative / destructive operations strictly via HTTP headers."""
+    if not ADMIN_API_KEY:
+        return False
+    # Strict Header-only authentication to prevent API key leakage in access/proxy logs
     key_hdr = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "")
-    key_query = request.query_params.get("api_key")
-    return bool((key_hdr and key_hdr == ADMIN_API_KEY) or (key_query and key_query == ADMIN_API_KEY))
+    return bool(key_hdr and key_hdr == ADMIN_API_KEY)
 
 # ----------------- OUTBOUND DELIVERY & PRODUCT TRACKING (Requirements 2 & 12) -----------------
 
-def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
+def send_whatsapp_text(to_phone: str, message_text: str, buyer_name: str = "Customer") -> dict:
     """Tracked outbound text messaging with delivery logging and persistent chat transcript."""
     res = _raw_send_whatsapp_text(to_phone, message_text)
     wamid = None
@@ -59,14 +74,14 @@ def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
         msgs = res.get("data", {}).get("messages", [])
         if msgs and isinstance(msgs, list):
             wamid = msgs[0].get("id")
-    status = "SENT" if (isinstance(res, dict) and res.get("success", True)) else "FAILED"
+    status = "SENT" if (isinstance(res, dict) and res.get("success", True) and not res.get("error")) else "FAILED"
     err = str(res.get("error", "")) if isinstance(res, dict) else ""
     db.log_outbound_delivery(wamid or "", to_phone, "text", message_text, status, err)
-    # Guarantee message is in the customer CRM transcript
-    log_chat_event(to_phone, "Customer", "bot", "text", message_text)
+    # Guarantee message is in the customer CRM transcript with status and wamid
+    log_chat_event(to_phone, buyer_name, "bot", "text", message_text, status=status, wamid=wamid)
     return res
 
-def send_whatsapp_image(to_phone: str, img_bytes: bytes, caption: str = "", sku: str = "", product_name: str = "", size_opts: str = "") -> dict:
+def send_whatsapp_image(to_phone: str, img_bytes: bytes, caption: str = "", sku: str = "", product_name: str = "", size_opts: str = "", buyer_name: str = "Customer") -> dict:
     """Tracked outbound image messaging with WAMID-to-SKU mapping and CRM transcript."""
     res = _raw_send_whatsapp_image(to_phone, img_bytes, caption)
     wamid = None
@@ -74,13 +89,13 @@ def send_whatsapp_image(to_phone: str, img_bytes: bytes, caption: str = "", sku:
         msgs = res.get("data", {}).get("messages", [])
         if msgs and isinstance(msgs, list):
             wamid = msgs[0].get("id")
-    status = "SENT" if (isinstance(res, dict) and res.get("success", True)) else "FAILED"
+    status = "SENT" if (isinstance(res, dict) and res.get("success", True) and not res.get("error")) else "FAILED"
     err = str(res.get("error", "")) if isinstance(res, dict) else ""
     db.log_outbound_delivery(wamid or "", to_phone, "image", caption, status, err)
     if wamid and sku:
         db.record_outbound_product(wamid, to_phone, sku, product_name, size_opts, "")
-    # Guarantee product image is in the customer CRM transcript
-    log_chat_event(to_phone, "Customer", "bot", "image", caption, sku=sku)
+    # Guarantee product image is in the customer CRM transcript with status and wamid
+    log_chat_event(to_phone, buyer_name, "bot", "image", caption, sku=sku, status=status, wamid=wamid)
     return res
 
 # ----------------- SESSION PERSISTENCE & CHAT EVENT LOGGING (Requirements 1, 5, 10) -----------------
@@ -93,9 +108,9 @@ def save_buyer_session(phone: str, session: dict):
     """Save session to transactional SQLite."""
     db.save_session_db(phone, session)
 
-def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text: str, photo_b64: str = None, sku: str = None, size: str = None, qty: int = None):
+def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text: str, photo_b64: str = None, sku: str = None, size: str = None, qty: int = None, status: str = "SENT", wamid: str = None, customer_required_quantity: int = None, catalog_available_stock: int = None, verified_live_stock: int = None):
     """Transactional chat logging with atomic dual-sync to data_store.json."""
-    db.sync_chat_event_db(phone, buyer_name, sender, msg_type, text, photo_b64, sku, size, qty)
+    db.sync_chat_event_db(phone, buyer_name, sender, msg_type, text, photo_b64, sku, size, qty, status=status, wamid=wamid, customer_required_quantity=customer_required_quantity, catalog_available_stock=catalog_available_stock, verified_live_stock=verified_live_stock)
 
 def load_live_inquiries():
     """Retrieve inquiries from database."""
@@ -129,6 +144,120 @@ def get_alternative_skus(best_sku: str, limit: int = 2):
             if len(alts) >= limit:
                 break
     return alts
+
+def classify_buyer_intent(raw_text: str, session: dict, active_sku: str = None) -> tuple:
+    """
+    Enterprise Intent Classifier for WhatsApp inquiries:
+    Distinguishes:
+    1. SELLER_STOCK_OR_CLAIM_REFERENCE (e.g. 'aapne bola tha ki aapke pass 1250 gross available hai')
+    2. ORDER_MODIFICATION (e.g. '200 nahi 500 gross kar do', '500 gross kar do')
+    3. ORDER_NEW_REQUIREMENT (e.g. '18L 200 Gross', '200 gross chahiye')
+    4. SIZE_MODIFICATION (e.g. '24L kar do', '18L size')
+    5. SPEC_OR_PRICE_INQUIRY (e.g. 'rate kya hai', 'kya rate 175 gross hai')
+    6. COURTESY_CONFIRMATION (e.g. 'ok', 'theek hai', 'thanks')
+    7. AMBIGUOUS_INTENT
+    
+    Guarantees:
+    - Never overwrites customer_required_quantity when customer mentions available stock, price, MOQ, or seller claims.
+    - Preserves last explicitly confirmed requirement across all subsequent WhatsApp messages.
+    """
+    lower_text = raw_text.lower().strip()
+    
+    # 1. Courtesy & Acknowledgements
+    if any(lower_text == w for w in [
+        "ok", "okay", "ok ji", "theek hai", "thik hai", "thanks", "thank you", 
+        "shukriya", "dhanyawad", "done", "ji", "sure", "alright", "great", 
+        "perfect", "done sir", "ok sir", "theek hai sir", "k", "kk", "ok done", "theek h", "haan", "ha", "yes"
+    ]):
+        return "COURTESY_CONFIRMATION", {}
+
+    # 2. Seller Stock or Previous Claim Reference
+    seller_claim_markers = [
+        "aapne bola", "aapne kaha", "aapne bataya", "bol rahe the", "kaha tha", "bola tha",
+        "you said", "you mentioned", "you told", "you claimed", "as you said", "you earlier said", "you stated",
+        "आपने कहा", "आपने बोला", "आपने बताया", "कह रहे थे"
+    ]
+    has_seller_claim = any(m in lower_text for m in seller_claim_markers)
+    
+    seller_stock_markers = [
+        "aapke pass", "aapke paas", "tumhare pass", "tumhare paas", "aapke godown", "aapke warehouse",
+        "available hai", "ready stock", "available stock", "godown stock", "total stock", "stock available",
+        "in stock", "in your stock", "do you have in stock", "available in stock", "ready in stock",
+        "stock kitna", "kitna stock", "उपलब्ध है", "स्टॉक में", "गोदाम में", "उपलब्ध स्टॉक", "रेडी स्टॉक", "स्टॉक है"
+    ]
+    has_seller_stock_ref = any(m in lower_text for m in seller_stock_markers)
+    
+    stock_inquiry_markers = [
+        "stock kitna hai", "kitna stock", "how much stock", "stock kitna", "kitna stock available",
+        "स्टॉक कितना है", "कितना स्टॉक"
+    ]
+    has_stock_inquiry = any(m in lower_text for m in stock_inquiry_markers)
+    
+    gross_match = re.search(r'(\d+)\s*(?:gross|gr|ग्रॉस)', lower_text)
+    pcs_match = re.search(r'(\d+)\s*(?:pcs|pieces|पीस)', lower_text)
+    
+    explicit_order_keywords = [
+        "nahi", "chahiye", "kar do", "kardo", "kar dena", "bhejo", "bhej do", "dispatch", 
+        "order", "pack", "make it", "change to", "instead", "requirement", "require",
+        "we need", "i need", "i want", "badha", "badhakar", "नहीं", "चाहिए", "कर दो", "भेजो"
+    ]
+    has_explicit_order_intent = any(w in lower_text for w in explicit_order_keywords)
+    
+    # Priority check: Reference to seller claim or seller/catalog stock
+    if has_seller_claim or has_seller_stock_ref or has_stock_inquiry:
+        matched_stock_num = int(gross_match.group(1)) if gross_match else None
+        
+        # Check if buyer is simultaneously expressing an explicit order update clause
+        order_qty_match = None
+        if "nahi" in lower_text or "chahiye" in lower_text or "kar do" in lower_text or "order" in lower_text:
+            sub_order = re.search(r'(?:nahi|badhakar|change to|instead of\s*\d+)\s*[,]?\s*(\d+)\s*(?:gross|gr|ग्रॉस)?', lower_text)
+            if sub_order:
+                order_qty_match = int(sub_order.group(1))
+            else:
+                sub_chahiye = re.search(r'(?:mujhe|hume|we need|i need|order)\s*(\d+)\s*(?:gross|gr|ग्रॉस)', lower_text)
+                if sub_chahiye:
+                    order_qty_match = int(sub_chahiye.group(1))
+        
+        if order_qty_match:
+            return "ORDER_MODIFICATION", {
+                "new_quantity": order_qty_match,
+                "referenced_stock": matched_stock_num
+            }
+        
+        return "SELLER_STOCK_OR_CLAIM_REFERENCE", {
+            "referenced_stock": matched_stock_num,
+            "has_claim": has_seller_claim,
+            "has_stock_ref": has_seller_stock_ref
+        }
+        
+    # 3. Explicit Order Modification / Correction
+    if has_explicit_order_intent and (gross_match or pcs_match):
+        corr_match = re.search(r'(\d+)\s*(?:nahi|not)\s*[,]?\s*(\d+)', lower_text)
+        if corr_match:
+            new_q = int(corr_match.group(2))
+            return "ORDER_MODIFICATION", {"new_quantity": new_q}
+            
+        target_qty = int(gross_match.group(1)) if gross_match else max(1, round(int(pcs_match.group(1)) / 144))
+        if session.get("customer_required_quantity") or session.get("quantity"):
+            return "ORDER_MODIFICATION", {"new_quantity": target_qty}
+        else:
+            return "ORDER_NEW_REQUIREMENT", {"new_quantity": target_qty}
+            
+    # 4. Standard new requirement (e.g. "18L 200 Gross", "200 Gross")
+    if gross_match or pcs_match:
+        target_qty = int(gross_match.group(1)) if gross_match else max(1, round(int(pcs_match.group(1)) / 144))
+        return "ORDER_NEW_REQUIREMENT", {"new_quantity": target_qty}
+        
+    # 5. Price / Spec inquiry
+    if any(w in lower_text for w in ["rate", "price", "quotation", "quote", "cost", "bhaav", "paisa", "kitne ka", "charges", "per gross", "discount", "moq"]):
+        return "SPEC_OR_PRICE_INQUIRY", {}
+        
+    # 6. Size only
+    size_match = re.search(r'\b(\d{1,2}(?:\.\d+)?\s*(?:l|ligne|line|mm))\b', lower_text, re.IGNORECASE)
+    if size_match:
+        return "SIZE_MODIFICATION", {"size": size_match.group(1).upper().replace(" ", "")}
+        
+    return "GENERAL_TEXT", {}
 
 async def process_incoming_whatsapp_message(value: dict):
     """
@@ -271,9 +400,14 @@ async def process_incoming_whatsapp_message(value: dict):
             session["has_photo"] = True
             session["matched_sku"] = matched_item["sku"]
             session["matched_name"] = matched_item["name"]
-            session["matched_size"] = matched_item.get("size_ligne", "")
+            raw_sz = str(matched_item.get("size_ligne", "")).strip()
+            if "/" not in raw_sz and "," not in raw_sz and "or" not in raw_sz.lower():
+                session["matched_size"] = raw_sz
+            else:
+                session["matched_size"] = None
             session["last_active_sku"] = matched_item["sku"]
             session["quantity"] = None # Reset quantity for the newly shared sample
+            session["customer_required_quantity"] = None
             session["waiting_for_similar_permission"] = False
             session["waiting_for_similar_approval"] = False
             
@@ -854,7 +988,16 @@ async def process_incoming_whatsapp_message(value: dict):
             item = get_item_by_sku(matched_text_sku) or SAMPLE_CATALOG[0]
             session["matched_sku"] = item["sku"]
             session["matched_name"] = item["name"]
-            session["matched_size"] = item.get("size_ligne", "")
+            
+            # Requirement 8: Never assume 14L or 18L when customer has not selected one.
+            # If item has multiple sizes (slash/comma/or), keep matched_size as None until customer selects.
+            raw_sz = str(item.get("size_ligne", "")).strip()
+            if "/" not in raw_sz and "," not in raw_sz and "or" not in raw_sz.lower():
+                session["matched_size"] = raw_sz
+            else:
+                if not session.get("matched_size"):
+                    session["matched_size"] = None
+                    
             session["has_photo"] = True
             session["last_active_sku"] = item["sku"]
             
@@ -938,6 +1081,98 @@ async def process_incoming_whatsapp_message(value: dict):
             log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=session.get("matched_sku"))
             return
 
+        # ----------------- INTENT CLASSIFICATION & STRUCTURED QUANTITY MEMORY -----------------
+        buyer_intent, intent_meta = classify_buyer_intent(text_body, session, active_sku=session.get("matched_sku"))
+
+        # REQUIREMENT 2, 4, 6, 9 & 11: SELLER STOCK REFERENCE OR PREVIOUS CLAIM
+        if buyer_intent == "SELLER_STOCK_OR_CLAIM_REFERENCE":
+            active_sku = session.get("matched_sku") or session.get("last_active_sku") or "ABC-136"
+            item = get_item_by_sku(active_sku) or SAMPLE_CATALOG[0]
+            item_name = item.get("name") if item else session.get("matched_name", "selected button")
+            clean_name = re.sub(r'\s*\([^)]*bulk[^)]*\)', '', item_name, flags=re.IGNORECASE).strip()
+            
+            # Extract catalog stock
+            cat_stock = intent_meta.get("referenced_stock") or item.get("stock_gross", 1250)
+            session["catalog_available_stock"] = cat_stock
+            
+            # REQUIREMENT 1, 2, 5 & 11: NEVER overwrite customer_required_quantity!
+            req_qty = session.get("customer_required_quantity") or session.get("quantity") or 200
+            session["customer_required_quantity"] = req_qty
+            session["quantity"] = req_qty
+            session["verified_live_stock"] = 0  # REQUIREMENT 9: Never claim live verification solely from static catalog
+            
+            # REQUIREMENT 8: Preserve size context
+            size_val = session.get("matched_size")
+            size_phrase = f" ({size_val})" if size_val else ""
+            
+            is_hindi_script = bool(re.search(r'[\u0900-\u097F]', text_body))
+            is_pure_english = (
+                any(w in lower_text for w in ["you mentioned", "you said", "you told", "available in stock", "how much stock", "ready in stock", "stock available"]) 
+                and not is_hindi_script 
+                and not bool(re.search(r'\b(?:aapne|aapke|paas|pass|hai|tha|godown|chahiye|batao|bhejo|hum)\b', lower_text))
+            )
+            
+            if is_hindi_script:
+                reply = (
+                    f"जी {salutation}, बिल्कुल सही! हमारे कैटलॉग रिकॉर्ड के अनुसार {clean_name}{size_phrase} का *{cat_stock:,} Gross* रेडी स्टॉक लिस्टेड है।\n\n"
+                    f"आपकी खरीदारी की आवश्यकता हमने *{req_qty:,} Gross* ही नोट कर रखी है। लाइव वेयरहाउस स्टॉक उपलब्धता और कोटेशन सेल्स टीम से वेरीफाई करवा रहे हैं सर।\n\n"
+                    f"क्या आपको {req_qty:,} Gross के लिए ही कोटेशन कन्फर्म करना है, या आप रिक्वायरमेंट बढ़ाना चाहते हैं?"
+                )
+            elif is_pure_english:
+                reply = (
+                    f"Yes {salutation}, absolutely! As per our catalog records, *{cat_stock:,} Gross* ready stock is listed for {clean_name}{size_phrase}.\n\n"
+                    f"Your purchase requirement remains noted as *{req_qty:,} Gross*. Our Sales Team is currently verifying live warehouse stock availability and preparing your quotation.\n\n"
+                    f"Would you like to confirm the quotation for {req_qty:,} Gross, or would you like to increase your quantity?"
+                )
+            else:
+                reply = (
+                    f"Ji {salutation}, bilkul sahi! Hamare catalog records ke mutabik {clean_name}{size_phrase} ka *{cat_stock:,} Gross* ready stock listed hai.\n\nAapki purchasing requirement humne *{req_qty:,} Gross* hi note kar rakhi hai. Current warehouse live stock availability aur quotation Sales Team se verify karwa rahe hain sir.\n\nKya aapko {req_qty:,} Gross ke liye hi quotation confirm karna hai, ya aap requirement badhana chahte hain?"
+                )
+                
+            save_buyer_session(from_phone, session)
+            log_chat_event(
+                from_phone, contact_name, "bot", "text", reply,
+                sku=active_sku, size=size_val, qty=req_qty,
+                customer_required_quantity=req_qty,
+                catalog_available_stock=cat_stock,
+                verified_live_stock=0
+            )
+            send_whatsapp_text(from_phone, reply)
+            return
+
+        # REQUIREMENT 3 & 6: EXPLICIT ORDER MODIFICATION / CORRECTION
+        if buyer_intent == "ORDER_MODIFICATION":
+            new_qty = intent_meta.get("new_quantity", 200)
+            active_sku = session.get("matched_sku") or session.get("last_active_sku") or "ABC-136"
+            item = get_item_by_sku(active_sku) if active_sku else None
+            item_name = item.get("name") if item else session.get("matched_name", "selected button")
+            clean_name = re.sub(r'\s*\([^)]*bulk[^)]*\)', '', item_name, flags=re.IGNORECASE).strip()
+            
+            session["customer_required_quantity"] = new_qty
+            session["quantity"] = new_qty
+            session["matched_sku"] = active_sku
+            session["matched_name"] = clean_name
+            if item:
+                session["catalog_available_stock"] = item.get("stock_gross", 1250)
+                
+            size_val = session.get("matched_size")
+            size_phrase = f" ({size_val})" if size_val else ""
+            
+            reply = (
+                f"Ji {salutation}, {clean_name}{size_phrase} ke liye aapki requirement update karke *{new_qty:,} Gross* kar di hai. "
+                f"Current stock availability aur quotation Sales Team se verify karwa rahe hain."
+            )
+            save_buyer_session(from_phone, session)
+            log_chat_event(
+                from_phone, contact_name, "bot", "text", reply,
+                sku=active_sku, size=size_val, qty=new_qty,
+                customer_required_quantity=new_qty,
+                catalog_available_stock=session.get("catalog_available_stock", 0),
+                verified_live_stock=0
+            )
+            send_whatsapp_text(from_phone, reply)
+            return
+
         # If quantity stated in this message -> record in session
         if has_qty_in_msg:
             if gross_match:
@@ -949,6 +1184,7 @@ async def process_incoming_whatsapp_message(value: dict):
                 session["quantity"] = round(val / 144) if val > 1000 else val
 
             qty = session.get("quantity", 0)
+            session["customer_required_quantity"] = qty
 
             # Scenario B: Multiple products shared, buyer replies with ambiguous quantity
             if session.get("waiting_for_similar_approval") and session.get("suggested_alternatives") and not session.get("matched_sku"):
@@ -974,6 +1210,9 @@ async def process_incoming_whatsapp_message(value: dict):
                 size_phrase = f" mein {size_val} size" if size_val else ""
 
                 session["quantity"] = qty
+                session["customer_required_quantity"] = qty
+                if item:
+                    session["catalog_available_stock"] = item.get("stock_gross", 1250)
                 session["matched_sku"] = active_sku
                 session["matched_name"] = clean_name
                 save_buyer_session(from_phone, session)
@@ -985,7 +1224,7 @@ async def process_incoming_whatsapp_message(value: dict):
                     f"Current stock availability aur quotation Sales Team se verify karwa rahe hain."
                 )
                 send_whatsapp_text(from_phone, reply)
-                log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=active_sku, size=size_val, qty=qty)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=active_sku, size=size_val, qty=qty, customer_required_quantity=qty, catalog_available_stock=session.get("catalog_available_stock", 0), verified_live_stock=0)
                 return
             else:
                 reply = "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
@@ -1003,21 +1242,29 @@ async def process_incoming_whatsapp_message(value: dict):
             courtesy_cnt = session.get("courtesy_count", 0) + 1
             session["courtesy_count"] = courtesy_cnt
             
+            # REQUIREMENT 1, 5 & 11: Preserve customer_required_quantity across courtesy messages
+            req_qty = session.get("customer_required_quantity") or session.get("quantity")
+            if req_qty:
+                session["customer_required_quantity"] = req_qty
+                session["quantity"] = req_qty
+            
             if courtesy_cnt > 1:
                 # If buyer repeats 'ok', keep response human and concise (no robotic repetition)
                 reply = f"Ji {salutation} 👍"
                 send_whatsapp_text(from_phone, reply)
-                log_chat_event(from_phone, contact_name, "bot", "text", reply)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply, qty=req_qty, customer_required_quantity=req_qty)
+                save_buyer_session(from_phone, session)
                 return
                 
-            if session.get("has_address") and not session.get("quantity"):
+            if session.get("has_address") and not req_qty:
                 reply = f"Ji bilkul {salutation}! Sample dispatch ki details aapse share kar denge. Dhanyawad sir! 🙏"
-            elif session.get("quantity"):
+            elif req_qty:
                 reply = f"Ji bilkul {salutation}! Quotation ready hote hi hum turant aapse share karenge. Dhanyawad sir! 🙏"
             else:
                 reply = f"Ji bilkul {salutation}! Dhanyawad. Koi bhi requirement ya query ho toh zaroor batayein sir. 🙏"
             send_whatsapp_text(from_phone, reply)
-            log_chat_event(from_phone, contact_name, "bot", "text", reply)
+            log_chat_event(from_phone, contact_name, "bot", "text", reply, qty=req_qty, customer_required_quantity=req_qty)
+            save_buyer_session(from_phone, session)
             return
             
         # General greeting / assistance
@@ -1117,19 +1364,53 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
                 value = changes[0].get("value", {})
                 if "messages" in value:
                     background_tasks.add_task(process_incoming_whatsapp_message, value)
+                if "statuses" in value:
+                    for s_item in value.get("statuses", []):
+                        w_id = s_item.get("id")
+                        s_val = s_item.get("status", "").upper()
+                        recip = s_item.get("recipient_id")
+                        err_list = s_item.get("errors", [])
+                        err_str = json.dumps(err_list) if err_list else ""
+                        if w_id:
+                            db.update_message_delivery_status(wamid=w_id, new_status=s_val, error=err_str, phone=recip)
     except Exception as e:
         print(f"Error handling webhook payload: {e}")
         
     return JSONResponse(content={"status": "received"}, status_code=200)
 
 @app.get("/api/live_inquiries")
-def get_live_inquiries():
+def get_live_inquiries(request: Request):
+    if not verify_admin_auth(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized. Valid X-API-Key required."})
     inqs = load_live_inquiries()
     return JSONResponse(content={
         "status": "success",
         "total": len(inqs),
         "inquiries": inqs
     })
+
+@app.post("/api/crm/update")
+async def update_crm_status_endpoint(request: Request):
+    """Synchronizes Human Takeover and Salesperson status from Streamlit Cloud to Render in real-time."""
+    if not verify_admin_auth(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized. Valid X-API-Key required."})
+    try:
+        body = await request.json()
+        phone = body.get("phone")
+        if not phone:
+            return JSONResponse(status_code=400, content={"error": "Missing phone"})
+        success, rows = db.update_inquiry_crm_meta(
+            phone=phone,
+            human_takeover=body.get("human_takeover"),
+            assigned_salesman=body.get("assigned_salesman"),
+            crm_status=body.get("crm_status")
+        )
+        if success and rows > 0:
+            return JSONResponse(content={"status": "success", "phone": phone, "rows_affected": rows})
+        else:
+            return JSONResponse(status_code=404, content={"error": f"Customer record for {phone} not found", "rows_affected": 0})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.post("/api/clear_inquiries")
 def clear_live_inquiries(request: Request):
@@ -1143,7 +1424,9 @@ def clear_live_inquiries(request: Request):
     return JSONResponse(content={"status": "cleared"})
 
 @app.get("/history")
-def get_history():
+def get_history(request: Request):
+    if not verify_admin_auth(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized. Valid X-API-Key required."})
     return {
         "total_events": len(received_events),
         "recent_events": received_events[-10:]

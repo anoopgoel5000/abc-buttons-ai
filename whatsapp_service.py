@@ -13,9 +13,9 @@ import urllib.parse
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 
-WHATSAPP_TOKEN = "EAGZAh8GzgluUBS8ef0g4G7Jzqn2AfZBbZB2bVwPiXB5nA5yS4tN7Ag8nWD9AQVrGdCoRz2lMfCntNbtqGmWZBJZCcxDsMo029Ewg3DphOi8isFfHMYlS9A83iHKNDVfGUZAqIAIHEZC3qJunRmRI2QAWhRIZAYVanJhgQTBsPLyMRoLRyHJOLYo1APHLRvo2"
-PHONE_NUMBER_ID = "1406479542552212"
-DEFAULT_RECIPIENT = "919315702804"
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
+PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "1406479542552212")
+DEFAULT_RECIPIENT = os.environ.get("TEST_RECIPIENT_PHONE", "919315702804")
 
 # 1. Try reading from .env file
 if os.path.exists(ENV_PATH):
@@ -49,6 +49,9 @@ def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
     Sends an official WhatsApp text message via Meta Cloud API.
     to_phone: 10 or 12 digit phone number (e.g. '919315702804')
     """
+    if not WHATSAPP_TOKEN:
+        return {"success": False, "error": "WHATSAPP_ACCESS_TOKEN not configured in environment or .env."}
+
     clean_phone = "".join(c for c in str(to_phone) if c.isdigit())
     if len(clean_phone) == 10:
         clean_phone = "91" + clean_phone
@@ -91,6 +94,9 @@ def upload_whatsapp_media(file_bytes: bytes, mime_type: str, filename: str) -> d
     """
     Uploads media (image or PDF) to Meta Cloud API and returns media_id.
     """
+    if not WHATSAPP_TOKEN:
+        return {"success": False, "error": "WHATSAPP_ACCESS_TOKEN not configured in environment or .env."}
+
     boundary = '----WebKitFormBoundaryABCButtonsMedia99'
     body = bytearray()
 

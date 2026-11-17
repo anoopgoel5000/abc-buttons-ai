@@ -24,6 +24,7 @@ from ai_engine import (
     simulate_salesman_chat
 )
 try:
+    import whatsapp_service
     from whatsapp_service import (
         send_whatsapp_text,
         send_whatsapp_image,
@@ -31,6 +32,7 @@ try:
         generate_proforma_card_image
     )
 except Exception:
+    whatsapp_service = None
     send_whatsapp_text = None
     send_whatsapp_image = None
     send_whatsapp_document = None
@@ -266,6 +268,11 @@ def sync_live_whatsapp_inquiries():
     try:
         import urllib.request
         admin_key = os.getenv("ADMIN_API_KEY", "")
+        if not admin_key and os.path.exists(os.path.join(os.path.dirname(__file__), ".env")):
+            with open(os.path.join(os.path.dirname(__file__), ".env"), "r", encoding="utf-8") as _ef:
+                for _line in _ef:
+                    if _line.strip().startswith("ADMIN_API_KEY="):
+                        admin_key = _line.strip().split("=", 1)[1].strip()
         headers = {"User-Agent": "Mozilla/5.0"}
         if admin_key:
             headers["X-API-Key"] = admin_key
@@ -281,6 +288,63 @@ def sync_live_whatsapp_inquiries():
     except Exception as e:
         print(f"Error syncing from cloud: {e}")
     return 0
+
+def sync_crm_meta_to_cloud(phone: str, human_takeover: int = None, assigned_salesman: str = None, crm_status: str = None) -> tuple:
+    """
+    Distributed ACID Fail-Safe Sync:
+    1. First dispatches update to Render backend via authenticated API.
+    2. Only when Render backend confirms success (HTTP 200 with verified rows_affected), 
+       local SQLite database commits the change.
+    3. If Render fails or is unreachable, local SQLite remains UNTOUCHED to ensure zero state divergence.
+    """
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if not admin_key and os.path.exists(os.path.join(os.path.dirname(__file__), ".env")):
+        with open(os.path.join(os.path.dirname(__file__), ".env"), "r", encoding="utf-8") as _ef:
+            for _line in _ef:
+                if _line.strip().startswith("ADMIN_API_KEY="):
+                    admin_key = _line.strip().split("=", 1)[1].strip()
+
+    cloud_url = "https://abc-buttons-ai.onrender.com/api/crm/update"
+    cloud_ok = False
+    cloud_msg = ""
+    
+    # Step 1: Dispatch to Cloud Render first
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "phone": phone,
+            "human_takeover": human_takeover,
+            "assigned_salesman": assigned_salesman,
+            "crm_status": crm_status
+        }).encode("utf-8")
+        headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        if admin_key:
+            headers["X-API-Key"] = admin_key
+        req = urllib.request.Request(cloud_url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 200:
+                resp_data = json.loads(resp.read().decode("utf-8"))
+                if resp_data.get("status") == "success":
+                    cloud_ok = True
+                    cloud_msg = f"Synced to Render ({resp_data.get('rows_affected', 1)} record updated)"
+                else:
+                    cloud_msg = resp_data.get("error", "Render returned non-success status")
+            else:
+                cloud_msg = f"Render HTTP status {resp.status}"
+    except Exception as e:
+        cloud_msg = str(e)
+
+    # Step 2: Distributed Transaction: Commit locally ONLY if Cloud succeeded
+    if cloud_ok:
+        try:
+            import db
+            db.update_inquiry_crm_meta(phone, human_takeover=human_takeover, assigned_salesman=assigned_salesman, crm_status=crm_status)
+        except Exception as e:
+            print(f"Local CRM commit error: {e}")
+        return True, cloud_msg
+    else:
+        # Fail-Safe: Cloud failed -> Do NOT update local database
+        return False, cloud_msg
 
 # ===============================================================================
 # SAMPLE 4: "QUICK-DESK RAPID BILLING" (HIGH-CONTRAST CLEAN DAYLIGHT FINTECH)
@@ -776,7 +840,37 @@ tabs = st.tabs([
 # ----------------- TAB 1: VISUAL BUTTON MATCHER -----------------
 with tabs[0]:
     # ---------------- TAB 1: WHATSAPP CUSTOMER INBOX (PURE & CLEAN) ----------------
-    st.markdown("""
+    @st.cache_data(ttl=60, show_spinner=False)
+    def check_meta_api_live_connection() -> tuple:
+        """Pings Meta Cloud API endpoint to verify real connectivity and token validity."""
+        try:
+            import whatsapp_service
+            token = os.getenv("WHATSAPP_ACCESS_TOKEN") or getattr(whatsapp_service, "WHATSAPP_TOKEN", "")
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID") or getattr(whatsapp_service, "PHONE_NUMBER_ID", "")
+        except Exception:
+            token = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+            phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+            
+        if not token or not phone_id:
+            return False, "Meta API Offline (Token Missing)"
+        try:
+            import urllib.request
+            url = f"https://graph.facebook.com/v22.0/{phone_id}"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "User-Agent": "ABC-Buttons-HealthCheck/1.0"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    return True, "Live Meta API Connected (Verified)"
+                return False, f"Meta HTTP {resp.status}"
+        except Exception as e:
+            return False, "Meta API Offline / Unreachable"
+
+    is_meta_live, meta_status_label = check_meta_api_live_connection()
+    meta_status_badge = (
+        f"<span style='color: #4ade80; font-weight: 700; font-size: 13px;'>🟢 {meta_status_label}</span>"
+        if is_meta_live else
+        f"<span style='color: #f87171; font-weight: 700; font-size: 13px;'>🔴 {meta_status_label}</span>"
+    )
+    st.markdown(f"""
     <div style="background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); 
                 padding: 22px 28px; border-radius: 14px; margin-bottom: 20px; 
                 box-shadow: 0 4px 15px rgba(15, 23, 42, 0.15); border-left: 6px solid #3b82f6;">
@@ -790,7 +884,7 @@ with tabs[0]:
                 </p>
             </div>
             <div style="background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);">
-                {"<span style='color: #4ade80; font-weight: 700; font-size: 13px;'>🟢 Live Meta API Active</span>" if (os.getenv("WHATSAPP_ACCESS_TOKEN") or getattr(whatsapp_service, "WHATSAPP_TOKEN", None)) else "<span style='color: #f87171; font-weight: 700; font-size: 13px;'>🔴 Meta API Offline</span>"}
+                {meta_status_badge}
             </div>
         </div>
     </div>
@@ -869,10 +963,11 @@ with tabs[0]:
                         <b>Phone:</b> <span style="font-family: monospace;">+{active_inq.get('phone', '')}</span> &nbsp;|&nbsp; <b>Time:</b> {active_inq.get('timestamp', 'Today')}
                     </div>
                     <div style="font-size: 13px; color: #475569; margin-bottom: 6px;">
-                        <b>Matched SKU:</b> <span style="color: #0284C7; font-weight: 700;">{active_inq.get('matched_sku', 'Inquiry')}</span> ({active_inq.get('matched_name', '')})
+                        <b>Matched SKU:</b> <span style="color: #0284C7; font-weight: 700;">{active_inq.get('matched_sku', 'Inquiry')}</span> ({active_inq.get('matched_name', '')}) {f"- Size: <b>{active_inq.get('matched_size')}</b>" if active_inq.get('matched_size') else ""}
                     </div>
-                    <div style="font-size: 13px; color: #475569;">
-                        <b>Requested Qty:</b> <span style="color: #16A34A; font-weight: 700;">{active_inq.get('quantity') or 0:,} Gross</span>
+                    <div style="display: flex; gap: 14px; font-size: 13px; color: #475569;">
+                        <div><b>Customer Requirement:</b> <span style="color: #16A34A; font-weight: 700;">{active_inq.get('customer_required_quantity') or active_inq.get('quantity') or 0:,} Gross</span></div>
+                        <div><b>Catalog Stock:</b> <span style="color: #0284C7; font-weight: 700;">{active_inq.get('catalog_available_stock') or 0:,} Gross</span></div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -883,7 +978,7 @@ with tabs[0]:
                         st.session_state["preset_quote_buyer"] = active_inq.get('buyer_name', '')
                         st.session_state["preset_quote_phone"] = active_inq.get('phone', '')
                         st.session_state["preset_quote_sku"] = active_inq.get('matched_sku', '')
-                        st.session_state["preset_quote_qty"] = active_inq.get('quantity') or 200
+                        st.session_state["preset_quote_qty"] = active_inq.get('customer_required_quantity') or active_inq.get('quantity') or 200
                         st.success(f"✅ {active_inq.get('buyer_name')} का डेटा लोड हो गया! ऊपर Tab 5 पर जाएँ।")
                 with c_p2:
                     clean_ph = re.sub(r'\D', '', str(active_inq.get('phone', '')))
@@ -918,18 +1013,24 @@ with tabs[0]:
                     st.write("")
                     if is_takeover:
                         if st.button("▶️ Resume AI", key=f"btn_resume_{active_inq['phone']}", help="Re-enables AI automatic replies"):
-                            import db
-                            db.update_inquiry_crm_meta(active_inq['phone'], human_takeover=0)
-                            active_inq['human_takeover'] = 0
-                            st.toast("✅ AI Bot resumed for this customer")
-                            st.rerun()
+                            with st.spinner("Syncing to Cloud Render..."):
+                                ok_cloud, msg = sync_crm_meta_to_cloud(active_inq['phone'], human_takeover=0)
+                            if ok_cloud:
+                                active_inq['human_takeover'] = 0
+                                st.toast("✅ AI Bot resumed on all servers (Streamlit & Render).")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Fail-Safe Block: Could not resume AI on Render Cloud ({msg}). State unchanged to prevent inconsistency.")
                     else:
                         if st.button("🛑 Take Over", key=f"btn_pause_{active_inq['phone']}", help="Pauses AI bot so human operator can reply directly"):
-                            import db
-                            db.update_inquiry_crm_meta(active_inq['phone'], human_takeover=1)
-                            active_inq['human_takeover'] = 1
-                            st.toast("🛑 AI Bot paused. You are now controlling this chat.")
-                            st.rerun()
+                            with st.spinner("Syncing to Cloud Render..."):
+                                ok_cloud, msg = sync_crm_meta_to_cloud(active_inq['phone'], human_takeover=1)
+                            if ok_cloud:
+                                active_inq['human_takeover'] = 1
+                                st.toast("🛑 AI Bot paused on all servers. You are now controlling this chat.")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Fail-Safe Block: Cannot Take Over. Cloud Webhook server was unreachable ({msg}). AI Bot was NOT paused on Render.")
 
                 # 2. Direct Operator WhatsApp Dispatch
                 st.markdown("<div style='margin-top: 10px; font-weight: 700; font-size: 13px; color: #1E293B;'>💬 Send Direct Message to Customer:</div>", unsafe_allow_html=True)
@@ -940,11 +1041,22 @@ with tabs[0]:
                     if st.button("📤 Send", key=f"btn_send_op_{active_inq['phone']}", type="primary", use_container_width=True):
                         if op_reply and op_reply.strip():
                             from whatsapp_service import send_whatsapp_text
-                            send_whatsapp_text(active_inq['phone'], op_reply.strip())
-                            import db
-                            db.sync_chat_event_db(active_inq['phone'], active_inq.get('buyer_name', 'Customer'), 'bot', 'text', op_reply.strip())
-                            st.success("✅ Sent via WhatsApp!")
-                            st.rerun()
+                            res = send_whatsapp_text(active_inq['phone'], op_reply.strip())
+                            success = bool(isinstance(res, dict) and res.get("success", True) and not res.get("error"))
+                            if success:
+                                op_wamid = None
+                                if isinstance(res, dict):
+                                    msgs_data = res.get("data", {}).get("messages", [])
+                                    if msgs_data and isinstance(msgs_data, list):
+                                        op_wamid = msgs_data[0].get("id")
+                                import db
+                                db.sync_chat_event_db(active_inq['phone'], active_inq.get('buyer_name', 'Customer'), 'operator', 'text', op_reply.strip(), status="SENT", wamid=op_wamid)
+                                db.log_outbound_delivery(op_wamid or "", active_inq['phone'], "text", op_reply.strip(), "SENT")
+                                st.success("✅ Message dispatched to WhatsApp!")
+                                st.rerun()
+                            else:
+                                err_str = res.get("error", "Unknown Meta API error") if isinstance(res, dict) else "Dispatch failed"
+                                st.error(f"❌ Failed to dispatch message via WhatsApp: {err_str}")
 
                 # 3. Salesperson Assignment & Deal Stage
                 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
@@ -955,8 +1067,7 @@ with tabs[0]:
                     cur_sp_idx = sales_team.index(cur_sp) if cur_sp in sales_team else 0
                     new_sp = st.selectbox("👤 Salesperson:", sales_team, index=cur_sp_idx, key=f"sp_sel_{active_inq['phone']}")
                     if new_sp != cur_sp:
-                        import db
-                        db.update_inquiry_crm_meta(active_inq['phone'], assigned_salesman=new_sp)
+                        ok_cloud, msg = sync_crm_meta_to_cloud(active_inq['phone'], assigned_salesman=new_sp)
                         active_inq['assigned_salesman'] = new_sp
                         st.toast(f"✅ Assigned to {new_sp}")
                         st.rerun()
@@ -966,27 +1077,28 @@ with tabs[0]:
                     cur_st_idx = stages.index(cur_st) if cur_st in stages else 0
                     new_st = st.selectbox("📌 Deal Stage:", stages, index=cur_st_idx, key=f"stage_sel_{active_inq['phone']}")
                     if new_st != cur_st:
-                        import db
-                        db.update_inquiry_crm_meta(active_inq['phone'], crm_status=new_st)
+                        ok_cloud, msg = sync_crm_meta_to_cloud(active_inq['phone'], crm_status=new_st)
                         active_inq['crm_status'] = new_st
                         st.toast(f"✅ Stage updated: {new_st}")
                         st.rerun()
                         
             with col_phone:
                 import base64
+                import html
                 msgs = list(active_inq.get("chat_messages", []))
                 p_time = active_inq.get("timestamp", "Today")
                 if " " in p_time:
                     p_time = p_time.split(" ")[1][:5]
                 
-                # Real messages only: if empty, show verified initial inquiry note or photo (no fake dialogue)
+                # Real messages only: never synthesize fake dialogues
                 if not msgs:
-                    if active_inq.get("photo_b64") or active_inq.get("notes"):
+                    buyer_note = (active_inq.get("notes") or "").strip()
+                    if active_inq.get("photo_b64") or (buyer_note and buyer_note != "Button Inquiry"):
                         msgs.append({
                             "sender": "buyer",
                             "sender_name": active_inq.get("buyer_name", "Customer"),
                             "type": "image" if active_inq.get("photo_b64") else "text",
-                            "text": active_inq.get("notes") or "Namaste! Button requirement inquiry.",
+                            "text": buyer_note if buyer_note else "📷 [Buyer sent button photo]",
                             "photo_b64": active_inq.get("photo_b64"),
                             "time": p_time
                         })
@@ -994,17 +1106,18 @@ with tabs[0]:
                 bubbles_html = ""
                 if not msgs:
                     bubbles_html = """
-                    <div style="align-self: center; background: #FEF3C7; color: #92400E; font-size: 11.5px; padding: 12px 14px; border-radius: 10px; text-align: center; margin: 40px 10px; border: 1px solid #FDE68A; line-height: 1.4;">
-                        🟢 <b>WhatsApp Real-time Connected</b><br>
-                        <span style="font-size: 10.5px; color: #78350F;">इस ग्राहक से अभी तक कोई संदेश दर्ज नहीं हुआ है। WhatsApp पर संदेश आते ही यहाँ लाइव दिखेगा।</span>
+                    <div style="align-self: center; background: #F8FAFC; color: #475569; font-size: 11.5px; padding: 14px 16px; border-radius: 10px; text-align: center; margin: 40px 10px; border: 1px dashed #CBD5E1; line-height: 1.4;">
+                        💬 <b>No Message History Yet</b><br>
+                        <span style="font-size: 10.5px; color: #64748B;">No conversation events recorded for this contact. Incoming and outgoing WhatsApp messages will appear here in real-time.</span>
                     </div>
                     """
                 else:
                     for m in msgs:
                         s = m.get("sender", "buyer")
                         is_buyer = (s == "buyer")
-                        m_time = m.get("time", "")
-                        m_text = m.get("text", "").replace("\n", "<br>")
+                        m_time = html.escape(str(m.get("time", "")))
+                        m_text = html.escape(str(m.get("text", ""))).replace("\n", "<br>")
+                        s_name = html.escape(str(m.get("sender_name", "Customer" if is_buyer else "ABC Buttons Assistant")))
                         
                         img_tag = ""
                         if m.get("photo_b64") and is_buyer:
@@ -1019,22 +1132,24 @@ with tabs[0]:
                         if is_buyer:
                             bubbles_html += f"""
                             <div style="align-self: flex-start; background: #FFFFFF; color: #0F172A; border-radius: 0 10px 10px 10px; padding: 7px 10px; max-width: 82%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
-                                <div style="font-size: 10px; font-weight: 700; color: #0284C7; margin-bottom: 2px;">{m.get('sender_name', 'Customer')}</div>
+                                <div style="font-size: 10px; font-weight: 700; color: #0284C7; margin-bottom: 2px;">{s_name}</div>
                                 {img_tag}
                                 <div>{m_text}</div>
                                 <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time}</div>
                             </div>
                             """
                         else:
-                            m_stat = m.get("status", "")
+                            m_stat = str(m.get("status", "")).upper()
                             if m_stat == "FAILED":
                                 tick_html = '<span style="color: #EF4444; font-weight: 700; font-size: 10px;">⚠️ Failed</span>'
-                            elif m_stat == "SENT":
-                                tick_html = '<span style="color: #64748B; font-weight: 700;">✓</span>'
+                            elif m_stat == "READ":
+                                tick_html = '<span style="color: #38BDF8; font-weight: 700;">✓✓</span>'
                             elif m_stat == "DELIVERED":
                                 tick_html = '<span style="color: #64748B; font-weight: 700;">✓✓</span>'
+                            elif m_stat == "SENT":
+                                tick_html = '<span style="color: #64748B; font-weight: 700;">✓</span>'
                             else:
-                                tick_html = '<span style="color: #38BDF8; font-weight: 700;">✓✓</span>'
+                                tick_html = '<span style="color: #94A3B8; font-weight: 600; font-size: 11px;">⏱️</span>'
                             bubbles_html += f"""
                             <div style="align-self: flex-end; background: #DCF8C6; color: #0F172A; border-radius: 10px 0 10px 10px; padding: 7px 10px; max-width: 84%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
                                 {img_tag}
@@ -1145,15 +1260,19 @@ with tabs[0]:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    qty_val = inq.get('quantity', 0)
+                    qty_val = inq.get('customer_required_quantity') or inq.get('quantity', 0)
+                    cat_stock_val = inq.get('catalog_available_stock', 0)
                     if qty_val:
-                        qty_badge = f"""<span style="background: #DCFCE7; color: #15803D; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; border: 1.5px solid #86EFAC;">📦 Required Qty: {qty_val:,} Gross ({qty_val*144:,} Pcs)</span>"""
+                        qty_badge = f"""<span style="background: #DCFCE7; color: #15803D; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; border: 1.5px solid #86EFAC;">📦 Required: {qty_val:,} Gross ({qty_val*144:,} Pcs)</span>"""
                     else:
                         qty_badge = """<span style="background: #FEF3C7; color: #B45309; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 700; border: 1.5px solid #FDE68A;">⏳ Awaiting Quantity Confirmation</span>"""
+                    
+                    stock_badge = f"""<span style="background: #EFF6FF; color: #1D4ED8; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; border: 1px solid #BFDBFE; margin-left: 6px;">🏭 Catalog Stock: {cat_stock_val:,} Gross</span>""" if cat_stock_val else ""
                     
                     st.markdown(f"""
                     <div style="margin-top: 10px;">
                         {qty_badge}
+                        {stock_badge}
                         <span style="background: #F1F5F9; color: #475569; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 8px;">Status: {inq.get('status', 'Active')}</span>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1164,7 +1283,7 @@ with tabs[0]:
                         st.session_state["preset_quote_buyer"] = inq.get('buyer_name', '')
                         st.session_state["preset_quote_phone"] = inq.get('phone', '')
                         st.session_state["preset_quote_sku"] = inq.get('matched_sku', '')
-                        st.session_state["preset_quote_qty"] = inq.get('quantity') or 200
+                        st.session_state["preset_quote_qty"] = inq.get('customer_required_quantity') or inq.get('quantity') or 200
                         st.success(f"✅ {inq.get('buyer_name')} का डेटा Tab 5 (1-Click Quotation) में लोड हो गया! ऊपर Tab 5 पर क्लिक करें।")
                     
                     # Direct WhatsApp link
@@ -1658,7 +1777,7 @@ with tabs[4]:
         s_name = saved_inq.get("buyer_name", "Customer")
         s_phone = saved_inq.get("phone", "")
         s_sku = saved_inq.get("matched_sku", "Button")
-        s_qty = saved_inq.get("quantity") or 200
+        s_qty = saved_inq.get("customer_required_quantity") or saved_inq.get("quantity") or 200
         inquiry_sources.append(f"💬 Live WhatsApp: {s_name} (+{s_phone}) - {s_sku} ({s_qty} Gross)")
 
     latest_wa = persisted.get("latest_whatsapp_inquiry")
@@ -1717,6 +1836,7 @@ with tabs[4]:
     
     with q_col1:
         q_buyer = st.text_input("Buyer Company Name:", value=default_buyer)
+        q_phone = st.text_input("Buyer WhatsApp Phone:", value=default_phone, key="q_buyer_phone_tab5")
         q_gst = st.text_input("Buyer GSTIN:", value=default_gst)
         
         sku_options = [x["name"] if x["name"].startswith(x["sku"]) else f"{x['sku']} - {x['name']}" for x in st.session_state.live_catalog]
@@ -1901,7 +2021,13 @@ with tabs[4]:
             f"• Quality: Lead-Free, Garment Wash Tested, Oeko-Tex Standard\n"
             f"• Official Stamped PDF Quotation attached/available on request."
         )
-        wa_quote_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(quote_summary_msg)}"
+        clean_target_phone = "".join(c for c in str(q_phone) if c.isdigit())
+        if len(clean_target_phone) == 10:
+            clean_target_phone = "91" + clean_target_phone
+        if not clean_target_phone:
+            clean_target_phone = "919315702804"
+            
+        wa_quote_url = f"https://api.whatsapp.com/send?phone={clean_target_phone}&text={urllib.parse.quote(quote_summary_msg)}"
         
         st.markdown("#### 💬 WhatsApp Proforma Invoice Dispatch:")
         st.text_area("WhatsApp PI Text (Auto-Formatted):", value=quote_summary_msg, height=140)
@@ -1912,7 +2038,7 @@ with tabs[4]:
             
         with c_q_btn2:
             if send_whatsapp_image and st.button("🖼️ Send Visual Card Image", key="send_meta_img_quote", help="Sends high-res Proforma Invoice card directly to WhatsApp via Meta API", use_container_width=True):
-                with st.spinner("Rendering & uploading invoice card image..."):
+                with st.spinner(f"Rendering & uploading invoice card image to {clean_target_phone}..."):
                     img_bytes = generate_proforma_card_image(
                         buyer_name=q_buyer,
                         buyer_gst=q_gst,
@@ -1924,19 +2050,19 @@ with tabs[4]:
                         discount_pct=q_discount,
                         gst_pct=gst_pct
                     )
-                    res_img = send_whatsapp_image("919315702804", img_bytes, caption=f"📋 Official Proforma Invoice ({pi_ref}) - ABC Buttons Pvt. Ltd.")
+                    res_img = send_whatsapp_image(clean_target_phone, img_bytes, caption=f"📋 Official Proforma Invoice ({pi_ref}) - ABC Buttons Pvt. Ltd.")
                     if res_img.get("success"):
-                        st.success("🚀 Visual Invoice Card delivered to WhatsApp!")
+                        st.success(f"🚀 Visual Invoice Card delivered to {clean_target_phone}!")
                         st.balloons()
                     else:
                         st.error(f"Image API Error: {res_img.get('error')}")
                         
         with c_q_btn3:
             if send_whatsapp_document and st.button("📄 Send Official PDF", key="send_meta_doc_quote", help="Dispatches stamped PDF file directly to WhatsApp via Meta API", use_container_width=True):
-                with st.spinner("Uploading and sending official PDF to WhatsApp..."):
-                    res_doc = send_whatsapp_document("919315702804", pdf_bytes, filename=f"ABC_Quotation_{selected_sku}_{safe_buyer}.pdf", caption=f"ABC Buttons Proforma Quotation ({pi_ref})")
+                with st.spinner(f"Uploading and sending official PDF to {clean_target_phone}..."):
+                    res_doc = send_whatsapp_document(clean_target_phone, pdf_bytes, filename=f"ABC_Quotation_{selected_sku}_{safe_buyer}.pdf", caption=f"ABC Buttons Proforma Quotation ({pi_ref})")
                     if res_doc.get("success"):
-                        st.success("🚀 Official PDF Invoice delivered to WhatsApp!")
+                        st.success(f"🚀 Official PDF Invoice delivered to {clean_target_phone}!")
                         st.balloons()
                     else:
                         st.error(f"PDF API Error: {res_doc.get('error')}")
@@ -1999,16 +2125,21 @@ with tabs[5]:
                         custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
                     st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
                 with c2:
+                    clean_target_phone = "".join(c for c in str(item.get("phone", "")) if c.isdigit())
+                    if len(clean_target_phone) == 10:
+                        clean_target_phone = "91" + clean_target_phone
+                    if not clean_target_phone:
+                        clean_target_phone = "919315702804"
                     clean_msg = custom_msg.strip().replace('"', '')
                     encoded_msg = urllib.parse.quote(clean_msg)
-                    wa_url = f"https://api.whatsapp.com/send?text={encoded_msg}"
+                    wa_url = f"https://api.whatsapp.com/send?phone={clean_target_phone}&text={encoded_msg}"
                     st.link_button("📲 WhatsApp", wa_url, use_container_width=True)
                 with c3:
-                    if send_whatsapp_text and st.button("⚡ Meta API", key=f"btn_meta_{item['id']}", help="Dispatch via Official Meta Cloud API"):
-                        with st.spinner("Sending follow-up..."):
-                            res_fu = send_whatsapp_text("919315702804", clean_msg)
+                    if send_whatsapp_text and st.button("⚡ Meta API", key=f"btn_meta_{item['id']}", help=f"Dispatch via Official Meta Cloud API to {clean_target_phone}"):
+                        with st.spinner(f"Sending follow-up to {clean_target_phone}..."):
+                            res_fu = send_whatsapp_text(clean_target_phone, clean_msg)
                             if res_fu.get("success"):
-                                st.success("Sent to WhatsApp!")
+                                st.success(f"Sent to {clean_target_phone}!")
                                 st.toast("Sample follow-up delivered!")
                             else:
                                 st.error(f"Error: {res_fu.get('error')}")
@@ -2030,9 +2161,9 @@ with tabs[6]:
     with p_col1:
         # Dynamic Overdue Accounts (Default Ledger + Pipeline Buyers)
         base_accounts = [
-            {"company": "Shahi Exports Pvt. Ltd.", "inv": "INV-2026-0894", "amt": 84500, "days": 12},
-            {"company": "Richa Global Apparels", "inv": "INV-2026-0912", "amt": 46200, "days": 5},
-            {"company": "Pearl Global Industries", "inv": "INV-2026-0785", "amt": 125000, "days": 18}
+            {"company": "Shahi Exports Pvt. Ltd.", "inv": "INV-2026-0894", "amt": 84500, "days": 12, "phone": "919811122233"},
+            {"company": "Richa Global Apparels", "inv": "INV-2026-0912", "amt": 46200, "days": 5, "phone": "919910087654"},
+            {"company": "Pearl Global Industries", "inv": "INV-2026-0785", "amt": 125000, "days": 18, "phone": "919871234567"}
         ]
         
         # Merge any new buyers from sample pipeline
@@ -2044,7 +2175,8 @@ with tabs[6]:
                     "company": c_name,
                     "inv": f"INV-2026-{950 + idx}",
                     "amt": 58000,
-                    "days": max(4, p_item.get("days_ago", 3) * 2)
+                    "days": max(4, p_item.get("days_ago", 3) * 2),
+                    "phone": p_item.get("phone", "919315702804")
                 })
         
         all_accounts = base_accounts + pipe_accounts
@@ -2058,12 +2190,14 @@ with tabs[6]:
         invoice_num = curr_acc["inv"]
         amt = curr_acc["amt"]
         days = curr_acc["days"]
+        rem_target_phone = st.text_input("Recipient WhatsApp Number:", value=curr_acc.get("phone", "919315702804"), key="tab7_rem_phone")
         
         st.markdown(f"""
         <div style="background: #f1f5f9; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 10px;">
             📄 <b>Invoice Number:</b> <code>{invoice_num}</code><br>
             💰 <b>Pending Amount:</b> ₹{amt:,.2f}<br>
-            ⏱️ <b>Overdue Days:</b> {days} Days Overdue
+            ⏱️ <b>Overdue Days:</b> {days} Days Overdue<br>
+            📱 <b>Target Contact:</b> <code>{rem_target_phone}</code>
         </div>
         """, unsafe_allow_html=True)
         
@@ -2077,17 +2211,23 @@ with tabs[6]:
             st.markdown("### 💬 Generated WhatsApp Message:")
             st.text_area("Ready-to-Send Message:", value=st.session_state["generated_reminder"], height=160)
             c_rm1, c_rm2, c_rm3 = st.columns([1, 1.2, 0.8])
+            clean_target_rem = "".join(c for c in str(rem_target_phone) if c.isdigit())
+            if len(clean_target_rem) == 10:
+                clean_target_rem = "91" + clean_target_rem
+            if not clean_target_rem:
+                clean_target_rem = "919315702804"
+                
             with c_rm1:
                 clean_reminder = st.session_state["generated_reminder"]
                 encoded_rem = urllib.parse.quote(clean_reminder)
-                wa_rem_url = f"https://api.whatsapp.com/send?text={encoded_rem}"
+                wa_rem_url = f"https://api.whatsapp.com/send?phone={clean_target_rem}&text={encoded_rem}"
                 st.link_button("📲 Send via WhatsApp", wa_rem_url, use_container_width=True)
             with c_rm2:
-                if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_reminder", help="Send Payment Reminder via Meta Cloud API"):
-                    with st.spinner("Dispatching Payment Reminder..."):
-                        res_rem = send_whatsapp_text("919315702804", clean_reminder)
+                if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_reminder", help=f"Send Payment Reminder via Meta Cloud API to {clean_target_rem}"):
+                    with st.spinner(f"Dispatching Payment Reminder to {clean_target_rem}..."):
+                        res_rem = send_whatsapp_text(clean_target_rem, clean_reminder)
                         if res_rem.get("success"):
-                            st.success("🚀 Payment Reminder Delivered to +91 93157 02804!")
+                            st.success(f"🚀 Payment Reminder Delivered to {clean_target_rem} ({buyer_clean_name})!")
                             st.balloons()
                         else:
                             st.error(f"API Error: {res_rem.get('error')}")
