@@ -250,7 +250,18 @@ def save_persistent_data():
         pass
 
 def sync_live_whatsapp_inquiries():
-    """Fetches real-time buyer photos and inquiries from Render WhatsApp webhook server."""
+    """Fetches real-time buyer photos and inquiries from SQLite or Render WhatsApp webhook server."""
+    # 1. Direct high-performance SQLite read if available
+    try:
+        import db
+        db_inqs = db.load_live_inquiries_db()
+        if db_inqs:
+            st.session_state["live_whatsapp_inquiries"] = db_inqs
+            return len(db_inqs)
+    except Exception:
+        pass
+
+    # 2. Cloud Render fallback
     cloud_url = "https://abc-buttons-ai.onrender.com/api/live_inquiries"
     try:
         import urllib.request
@@ -260,14 +271,7 @@ def sync_live_whatsapp_inquiries():
                 data = json.loads(resp.read().decode("utf-8"))
                 cloud_list = data.get("inquiries", [])
                 if cloud_list:
-                    local_list = list(st.session_state.get("live_whatsapp_inquiries", []))
-                    for cinq in cloud_list:
-                        match_idx = next((i for i, x in enumerate(local_list) if x.get("phone") == cinq.get("phone")), None)
-                        if match_idx is not None:
-                            local_list[match_idx] = cinq
-                        else:
-                            local_list.insert(0, cinq)
-                    st.session_state["live_whatsapp_inquiries"] = local_list[:50]
+                    st.session_state["live_whatsapp_inquiries"] = cloud_list
                     save_persistent_data()
                     return len(cloud_list)
     except Exception as e:
@@ -888,35 +892,33 @@ with tabs[0]:
                         
             with col_phone:
                 import base64
-                msgs = active_inq.get("chat_messages", [])
+                msgs = list(active_inq.get("chat_messages", []))
+                p_time = active_inq.get("timestamp", "Today")
+                if " " in p_time:
+                    p_time = p_time.split(" ")[1][:5]
+                
+                # Real messages only: if empty, show verified initial inquiry note or photo (no fake dialogue)
                 if not msgs:
-                    p_time = active_inq.get("timestamp", "Today")
-                    if " " in p_time:
-                        p_time = p_time.split(" ")[1][:5]
-                    msgs = [
-                        {
+                    if active_inq.get("photo_b64") or active_inq.get("notes"):
+                        msgs.append({
                             "sender": "buyer",
                             "sender_name": active_inq.get("buyer_name", "Customer"),
                             "type": "image" if active_inq.get("photo_b64") else "text",
-                            "text": active_inq.get("notes") or "Namaste, ye button aapke paas ready stock me mil jayega?",
+                            "text": active_inq.get("notes") or "Namaste! Button requirement inquiry.",
                             "photo_b64": active_inq.get("photo_b64"),
                             "time": p_time
-                        },
-                        {
-                            "sender": "bot",
-                            "sender_name": "ABC Buttons Assistant",
-                            "type": "image" if active_inq.get("matched_sku") and active_inq.get("matched_sku") != "Custom / Non-Catalog" else "text",
-                            "sku": active_inq.get("matched_sku"),
-                            "text": f"Ji sir, aapke sample ka matching stock available hai: {active_inq.get('matched_name', 'Catalog Button')}.\n\nAapko kitni quantity chahiye?",
-                            "time": p_time
-                        }
-                    ]
-                    if active_inq.get("quantity"):
-                        msgs.append({"sender": "buyer", "sender_name": active_inq.get("buyer_name", "Customer"), "type": "text", "text": f"{active_inq.get('quantity')} Gross", "time": p_time})
-                        msgs.append({"sender": "bot", "sender_name": "ABC Buttons Assistant", "type": "text", "text": f"Ji {active_inq.get('buyer_name', 'Sir')}, {active_inq.get('quantity')} Gross ki requirement note kar li hai.", "time": p_time})
+                        })
                         
                 bubbles_html = ""
-                for m in msgs:
+                if not msgs:
+                    bubbles_html = """
+                    <div style="align-self: center; background: #FEF3C7; color: #92400E; font-size: 11.5px; padding: 12px 14px; border-radius: 10px; text-align: center; margin: 40px 10px; border: 1px solid #FDE68A; line-height: 1.4;">
+                        🟢 <b>WhatsApp Real-time Connected</b><br>
+                        <span style="font-size: 10.5px; color: #78350F;">इस ग्राहक से अभी तक कोई संदेश दर्ज नहीं हुआ है। WhatsApp पर संदेश आते ही यहाँ लाइव दिखेगा।</span>
+                    </div>
+                    """
+                else:
+                    for m in msgs:
                     s = m.get("sender", "buyer")
                     is_buyer = (s == "buyer")
                     m_time = m.get("time", "")
@@ -942,11 +944,20 @@ with tabs[0]:
                         </div>
                         """
                     else:
+                        m_stat = m.get("status", "")
+                        if m_stat == "FAILED":
+                            tick_html = '<span style="color: #EF4444; font-weight: 700; font-size: 10px;">⚠️ Failed</span>'
+                        elif m_stat == "SENT":
+                            tick_html = '<span style="color: #64748B; font-weight: 700;">✓</span>'
+                        elif m_stat == "DELIVERED":
+                            tick_html = '<span style="color: #64748B; font-weight: 700;">✓✓</span>'
+                        else:
+                            tick_html = '<span style="color: #38BDF8; font-weight: 700;">✓✓</span>'
                         bubbles_html += f"""
                         <div style="align-self: flex-end; background: #DCF8C6; color: #0F172A; border-radius: 10px 0 10px 10px; padding: 7px 10px; max-width: 84%; box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-size: 12.5px; line-height: 1.35; margin-bottom: 8px;">
                             {img_tag}
                             <div>{m_text}</div>
-                            <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time} <span style="color: #38BDF8; font-weight: 700;">✓✓</span></div>
+                            <div style="font-size: 9px; color: #64748B; text-align: right; margin-top: 3px;">{m_time} {tick_html}</div>
                         </div>
                         """
                         

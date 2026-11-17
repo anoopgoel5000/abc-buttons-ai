@@ -52,7 +52,7 @@ def verify_admin_auth(request: Request) -> bool:
 # ----------------- OUTBOUND DELIVERY & PRODUCT TRACKING (Requirements 2 & 12) -----------------
 
 def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
-    """Tracked outbound text messaging with delivery logging."""
+    """Tracked outbound text messaging with delivery logging and persistent chat transcript."""
     res = _raw_send_whatsapp_text(to_phone, message_text)
     wamid = None
     if isinstance(res, dict):
@@ -62,10 +62,12 @@ def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
     status = "SENT" if (isinstance(res, dict) and res.get("success", True)) else "FAILED"
     err = str(res.get("error", "")) if isinstance(res, dict) else ""
     db.log_outbound_delivery(wamid or "", to_phone, "text", message_text, status, err)
+    # Guarantee message is in the customer CRM transcript
+    log_chat_event(to_phone, "Customer", "bot", "text", message_text)
     return res
 
 def send_whatsapp_image(to_phone: str, img_bytes: bytes, caption: str = "", sku: str = "", product_name: str = "", size_opts: str = "") -> dict:
-    """Tracked outbound image messaging with WAMID-to-SKU mapping."""
+    """Tracked outbound image messaging with WAMID-to-SKU mapping and CRM transcript."""
     res = _raw_send_whatsapp_image(to_phone, img_bytes, caption)
     wamid = None
     if isinstance(res, dict):
@@ -77,6 +79,8 @@ def send_whatsapp_image(to_phone: str, img_bytes: bytes, caption: str = "", sku:
     db.log_outbound_delivery(wamid or "", to_phone, "image", caption, status, err)
     if wamid and sku:
         db.record_outbound_product(wamid, to_phone, sku, product_name, size_opts, "")
+    # Guarantee product image is in the customer CRM transcript
+    log_chat_event(to_phone, "Customer", "bot", "image", caption, sku=sku)
     return res
 
 # ----------------- SESSION PERSISTENCE & CHAT EVENT LOGGING (Requirements 1, 5, 10) -----------------
@@ -212,6 +216,7 @@ async def process_incoming_whatsapp_message(value: dict):
                 live_whatsapp_inquiries.pop(existing_idx)
             live_whatsapp_inquiries.insert(0, inq_entry)
             save_live_inquiries()
+            log_chat_event(from_phone, contact_name, "buyer", "image", caption or "📷 [Sample Button Photo Sent]", photo_b64=b64_img, sku=best_sku)
 
             
             # 3. Handle non-button images

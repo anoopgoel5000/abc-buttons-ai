@@ -347,16 +347,23 @@ def sync_chat_event_db(phone: str, buyer_name: str, sender: str, msg_type: str, 
             }
             chat_list = []
             
-        # Append message
-        chat_list.append({
-            "sender": sender,
-            "sender_name": buyer_name if sender == "buyer" else "ABC Buttons Assistant",
-            "type": msg_type,
-            "text": text,
-            "photo_b64": photo_b64,
-            "sku": sku,
-            "time": time_short
-        })
+        # Deduplication: do not append identical message from same sender consecutively
+        is_dup = False
+        if chat_list:
+            last_m = chat_list[-1]
+            if last_m.get("sender") == sender and last_m.get("text") == text and (not photo_b64 or last_m.get("photo_b64") == photo_b64):
+                is_dup = True
+
+        if not is_dup:
+            chat_list.append({
+                "sender": sender,
+                "sender_name": buyer_name if sender == "buyer" else "ABC Buttons Assistant",
+                "type": msg_type,
+                "text": text,
+                "photo_b64": photo_b64,
+                "sku": sku,
+                "time": time_short
+            })
         
         # Update inquiry fields
         if buyer_name and buyer_name not in ["Sir", "Buyer"]:
@@ -384,6 +391,23 @@ def sync_chat_event_db(phone: str, buyer_name: str, sender: str, msg_type: str, 
         
     # Safe atomic export to data_store.json for Streamlit frontend
     export_to_data_store_json()
+
+def load_live_inquiries_db() -> list:
+    """Direct high-performance read of live inquiries from SQLite."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM live_inquiries ORDER BY updated_at DESC LIMIT 50")
+            rows = cur.fetchall()
+            res = []
+            for r in rows:
+                d = dict(r)
+                d["chat_messages"] = json.loads(d["chat_messages"]) if d.get("chat_messages") else []
+                res.append(d)
+            return res
+    except Exception as e:
+        print(f"Error loading inquiries from SQLite: {e}")
+        return []
 
 def export_to_data_store_json():
     """Safe atomic sync from SQLite to data_store.json using temporary file."""
