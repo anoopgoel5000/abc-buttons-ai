@@ -277,7 +277,7 @@ def sync_live_whatsapp_inquiries():
         if admin_key:
             headers["X-API-Key"] = admin_key
         req = urllib.request.Request(cloud_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=2) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
                 cloud_list = data.get("inquiries", [])
@@ -739,7 +739,7 @@ st.markdown("""
             </div>
             <div class="metric-chip chip-blue">
                 <span>⚡</span>
-                <span>Vision Matcher: <b>100% Calibrated</b></span>
+                <span>Vision Matcher: <b>Multi-Candidate Ready</b></span>
             </div>
         </div>
     </div>
@@ -978,7 +978,7 @@ with tabs[0]:
                         st.session_state["preset_quote_buyer"] = active_inq.get('buyer_name', '')
                         st.session_state["preset_quote_phone"] = active_inq.get('phone', '')
                         st.session_state["preset_quote_sku"] = active_inq.get('matched_sku', '')
-                        st.session_state["preset_quote_qty"] = active_inq.get('customer_required_quantity') or active_inq.get('quantity') or 200
+                        st.session_state["preset_quote_qty"] = int(active_inq.get('customer_required_quantity') or active_inq.get('quantity') or 0)
                         st.success(f"✅ {active_inq.get('buyer_name')} का डेटा लोड हो गया! ऊपर Tab 5 पर जाएँ।")
                 with c_p2:
                     clean_ph = re.sub(r'\D', '', str(active_inq.get('phone', '')))
@@ -1283,7 +1283,7 @@ with tabs[0]:
                         st.session_state["preset_quote_buyer"] = inq.get('buyer_name', '')
                         st.session_state["preset_quote_phone"] = inq.get('phone', '')
                         st.session_state["preset_quote_sku"] = inq.get('matched_sku', '')
-                        st.session_state["preset_quote_qty"] = inq.get('customer_required_quantity') or inq.get('quantity') or 200
+                        st.session_state["preset_quote_qty"] = int(inq.get('customer_required_quantity') or inq.get('quantity') or 0)
                         st.success(f"✅ {inq.get('buyer_name')} का डेटा Tab 5 (1-Click Quotation) में लोड हो गया! ऊपर Tab 5 पर क्लिक करें।")
                     
                     # Direct WhatsApp link
@@ -1322,33 +1322,111 @@ with tabs[0]:
                 st.rerun()
 
 with tabs[1]:
-    # ---------------- TAB 2: AI BUTTON SCANNER (CLEAN PHOTO LAB) ----------------
+    # ---------------- TAB 2: AI BUTTON SCANNER & INVENTORY MATCHER (ENTERPRISE LAB) ----------------
+    import base64
+    import hashlib
+    import html
+    import re
+    import time
+    import urllib.parse
+    from uuid import uuid4
+    from PIL import Image
+    from io import BytesIO
+    import db
+    from ai_engine import analyze_button_or_fabric_image
+
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%); 
+    <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4338ca 100%); 
                 padding: 22px 28px; border-radius: 14px; margin-bottom: 20px; 
-                box-shadow: 0 4px 15px rgba(49, 46, 129, 0.15); border-left: 6px solid #818cf8;">
-        <h2 style="color: #ffffff !important; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">
-            🔍 AI Visual Button Matcher & Inventory Scanner
-        </h2>
-        <p style="color: #c7d2fe !important; margin: 5px 0 0 0; font-size: 14px;">
-            कंप्यूटर से फोटो अपलोड करें या कैमरे से लाइव खींचें - AI 2 सेकंड में बटन का प्रकार, साइज और गोदाम का स्टॉक ढूंढेगा।
-        </p>
+                box-shadow: 0 4px 15px rgba(49, 46, 129, 0.2); border-left: 6px solid #818cf8;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <h2 style="color: #ffffff !important; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">
+                    🔍 AI Visual Button Matcher & Inventory Scanner
+                </h2>
+                <p style="color: #c7d2fe !important; margin: 5px 0 0 0; font-size: 13.5px;">
+                    Top 3 Candidate Matching • Mandatory Human Verification • Real Warehouse Stock Handoff • Safe WhatsApp Dispatch
+                </p>
+            </div>
+            <div style="background: rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.25);">
+                <span style="color: #a5b4fc; font-weight: 700; font-size: 12px;">⚡ Multi-Candidate Ranked Engine</span>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    col_input, col_result = st.columns([1, 1])
+    # 1. Inquiry Linkage & Buyer Selection (Requirement 1, 7, 10, 15)
+    st.markdown("##### 👤 Step 1: बायर पहचान एवं इन्क्वायरी लिंकेज (Customer & Inquiry Linkage)")
+    col_buyer_sel, col_inq_meta = st.columns([1.5, 1])
+
+    live_inqs_all = db.load_live_inquiries_db()
+    buyer_choices = ["➕ New Customer / Walk-in Buyer"]
+    for inq_item in live_inqs_all:
+        b_name = inq_item.get("buyer_name", "Customer")
+        b_ph = inq_item.get("phone", "")
+        b_sku = inq_item.get("matched_sku", "Inquiry")
+        buyer_choices.append(f"👤 {b_name} (+{b_ph}) — SKU: {b_sku}")
+
+    with col_buyer_sel:
+        selected_buyer_opt = st.selectbox(
+            "लिंक करने के लिए ग्राहक चुनें (Link to Customer Profile):",
+            buyer_choices,
+            index=0,
+            key="scanner_buyer_selector"
+        )
+
+    scan_buyer_name = "Walk-in Buyer"
+    scan_buyer_phone = ""
+    target_inq_id = None
+
+    if selected_buyer_opt.startswith("👤"):
+        sel_b_idx = buyer_choices.index(selected_buyer_opt) - 1
+        active_rec = live_inqs_all[sel_b_idx]
+        scan_buyer_name = active_rec.get("buyer_name", "Customer")
+        scan_buyer_phone = str(active_rec.get("phone", ""))
+        target_inq_id = active_rec.get("id")
+    else:
+        cb1, cb2 = st.columns(2)
+        with cb1:
+            scan_buyer_name = st.text_input("Buyer / Company Name:", value="New Garment Buyer", key="scan_new_bname")
+        with cb2:
+            scan_buyer_phone = st.text_input("WhatsApp Mobile Number:", placeholder="e.g. 9811234567", key="scan_new_bphone")
+
+    clean_scan_phone = "".join(ch for ch in scan_buyer_phone if ch.isdigit())
+    if not target_inq_id:
+        if "scanner_curr_inq_id" not in st.session_state:
+            st.session_state["scanner_curr_inq_id"] = f"INQ-SCAN-{datetime.datetime.now().strftime('%Y%m%d')}-{uuid4().hex[:4].upper()}"
+        target_inq_id = st.session_state["scanner_curr_inq_id"]
+
+    with col_inq_meta:
+        st.markdown(f"""
+        <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; margin-top: 4px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Active Inquiry Tracking ID</div>
+            <div style="font-size: 15px; font-weight: 800; color: #1e293b; font-family: monospace; margin-top: 2px;">
+                🏷️ {html.escape(target_inq_id)}
+            </div>
+            <div style="font-size: 11px; color: #475569; margin-top: 2px;">
+                Buyer: <b>{html.escape(scan_buyer_name)}</b> | Phone: <b>{'+' + clean_scan_phone if clean_scan_phone else 'Not Verified'}</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<hr style='margin: 14px 0;'>", unsafe_allow_html=True)
+
+    col_input, col_result = st.columns([1, 1.25])
     
     with col_input:
-        st.markdown("#### Step 1: बायर की भेजी गई फोटो चुनें या अपलोड करें")
+        st.markdown("#### Step 2: बटन की फोटो लोड करें (Buyer Image Input)")
         
         input_choice = st.radio("Testing Source:", [
             "📸 Use Camera (Take Live Photo from Phone / Laptop)",
             "📁 Upload Photo from Computer / Phone Gallery",
             "🔘 Use Pre-Loaded Buyer Samples (5 Running Items)"
-        ], horizontal=True)
+        ], horizontal=True, key="scanner_src_radio")
         
         selected_img_bytes = None
         selected_label = ""
+        buyer_notes = ""
         
         if input_choice.startswith("📸"):
             camera_img = st.camera_input("Point camera directly at button on fabric or table:")
@@ -1360,10 +1438,10 @@ with tabs[1]:
                 img.save(buf, format="JPEG")
                 selected_img_bytes = buf.getvalue()
                 selected_label = "Live Camera Capture"
-            buyer_notes = st.text_input("Buyer's WhatsApp message / requirement:", placeholder="e.g. 'Ye button mil jayega kya? 200 gross chahiye'")
+            buyer_notes = st.text_input("Buyer's WhatsApp message / requirement:", placeholder="e.g. 'Ye button mil jayega kya? 200 gross chahiye'", key="cam_buyer_notes")
             
         elif input_choice.startswith("📁"):
-            uploaded_file = st.file_uploader("Upload any button or fabric photo (JPG / PNG):", type=["jpg", "jpeg", "png"])
+            uploaded_file = st.file_uploader("Upload any button or fabric photo (JPG / PNG):", type=["jpg", "jpeg", "png"], key="scanner_file_up")
             if uploaded_file is not None:
                 img = Image.open(uploaded_file)
                 if img.mode != "RGB":
@@ -1373,9 +1451,10 @@ with tabs[1]:
                 selected_img_bytes = buf.getvalue()
                 selected_label = uploaded_file.name
                 st.image(img, caption="Uploaded Photo", use_container_width=True)
-            buyer_notes = st.text_input("Buyer's WhatsApp message:", placeholder="e.g. 'Ye button mil jayega kya? Rate aur availability batao'")
+            buyer_notes = st.text_input("Buyer's WhatsApp message:", placeholder="e.g. 'Ye button mil jayega kya? Rate aur availability batao'", key="file_buyer_notes")
             
         else:
+            # 5 Verified Running Buyer Samples (Requirement 16)
             real_photos_map = {
                 "🔘 Real Photo 1: Natural White River Shell (2-Hole Raised Rim)": (
                     "buyer_mop_white_2hole.jpg", 
@@ -1398,28 +1477,90 @@ with tabs[1]:
                     "Official ABC Buttons sample card showing ABC-136, ABC-137, ABC-138, ABC-139, ABC-141, ABC-142 shell buttons"
                 )
             }
+            # Requirement 16: Supply working sample images or remove unavailable sample options
+            valid_photos_map = {}
+            for k, (fname, hint) in real_photos_map.items():
+                p = os.path.join(TEST_DIR, fname)
+                if os.path.exists(p):
+                    valid_photos_map[k] = (fname, hint)
             
-            chosen_key = st.selectbox("Pick an Actual Buyer Photo to Test:", list(real_photos_map.keys()))
-            filename, prompt_hint = real_photos_map[chosen_key]
-            fpath = os.path.join(TEST_DIR, filename)
-            
-            if os.path.exists(fpath):
+            if not valid_photos_map:
+                st.warning("⚠️ No pre-loaded sample photo assets found in test directory.")
+            else:
+                chosen_key = st.selectbox("Pick an Actual Buyer Photo to Test:", list(valid_photos_map.keys()), key="sample_photo_sel")
+                filename, prompt_hint = valid_photos_map[chosen_key]
+                fpath = os.path.join(TEST_DIR, filename)
+                
                 with open(fpath, "rb") as f_raw:
                     selected_img_bytes = f_raw.read()
                 img = Image.open(fpath)
                 selected_label = chosen_key
                 st.image(img, caption=f"Buyer WhatsApp Photo: {chosen_key}", use_container_width=True)
-            
-            buyer_notes = st.text_input("Buyer's WhatsApp message:", value=prompt_hint)
+                buyer_notes = st.text_input("Buyer's WhatsApp message:", value=prompt_hint, key="sample_buyer_notes")
+
+        # Stale Analysis Purge & Invalidation on Buyer/Photo/Notes changes (Requirement 7 & 12)
+        if selected_img_bytes is not None:
+            curr_input_sig = hashlib.sha256(
+                (clean_scan_phone or "").encode("utf-8") +
+                b"|" + (scan_buyer_name or "").encode("utf-8") +
+                b"|" + (buyer_notes or "").strip().encode("utf-8") +
+                b"|" + selected_img_bytes
+            ).hexdigest()[:16]
+            prev_input_sig = st.session_state.get("scanner_active_input_sig")
+            if prev_input_sig and prev_input_sig != curr_input_sig:
+                # User changed buyer, photo, or note -> clear previous analysis and approval immediately
+                st.session_state.pop("tab1_match_result", None)
+                st.session_state.pop("scanner_approved_sku", None)
+                st.session_state.pop("scanner_approved_cand", None)
+                st.session_state.pop("scanner_human_reviewed", None)
+                st.session_state.pop("scanner_dispatch_wamid", None)
+            st.session_state["scanner_active_input_sig"] = curr_input_sig
 
     with col_result:
-        st.markdown("#### Step 2: AI विज़न मिलान और लाइव आउटपुट")
+        st.markdown("#### Step 3: AI विज़न मिलान एवं कैंडिडेट रैंकिंग")
         
         if selected_img_bytes is not None:
-            if st.button("🚀 Analyze & Match with ABC Buttons Inventory", type="primary"):
-                with st.spinner("AI scanning material sheen, holes, thickness & matching SKU..."):
+            if st.button("🚀 Analyze & Match with ABC Buttons Inventory", type="primary", key="btn_run_scanner"):
+                with st.spinner("AI scanning material sheen, holes, thickness & ranking Top 3 candidates..."):
                     try:
-                        st.session_state["tab1_match_result"] = analyze_button_or_fabric_image(selected_img_bytes, buyer_notes)
+                        scan_res = analyze_button_or_fabric_image(selected_img_bytes, buyer_notes)
+                        st.session_state["tab1_match_result"] = scan_res
+                        st.session_state.pop("scanner_approved_sku", None)
+                        st.session_state.pop("scanner_approved_cand", None)
+                        st.session_state.pop("scanner_human_reviewed", None)
+                        
+                        # Requirement 1: Integrate log_scanner_inquiry() into the scanner workflow
+                        photo_b64_str = base64.b64encode(selected_img_bytes).decode("utf-8")
+                        top_cands = scan_res.get("top_candidates", [])
+                        top_c1 = top_cands[0] if top_cands else {}
+                        matched_sku_val = top_c1.get("sku") or scan_res.get("best_match_sku") or "Custom Non-Catalog"
+                        matched_name_val = top_c1.get("name") or scan_res.get("visual_analysis", {}).get("finish_detected", "Button Inquiry")
+                        
+                        # Extract quantity requirement if mentioned
+                        detected_qty = 0
+                        qty_m = re.search(r'(\d+)\s*(?:gross|gr|gros)\b', (buyer_notes or "").lower())
+                        if qty_m:
+                            detected_qty = int(qty_m.group(1))
+                            
+                        cat_item = next((x for x in st.session_state.live_catalog if x["sku"] == matched_sku_val), None)
+                        c_stock = cat_item["stock_gross"] if cat_item else 0
+                        
+                        db.log_scanner_inquiry(
+                            inquiry_id=target_inq_id,
+                            phone=clean_scan_phone,
+                            buyer_name=scan_buyer_name,
+                            photo_b64=photo_b64_str,
+                            matched_sku=matched_sku_val,
+                            matched_name=matched_name_val,
+                            matched_size=scan_res.get("visual_analysis", {}).get("estimated_size", ""),
+                            quantity=detected_qty,
+                            notes=buyer_notes,
+                            crm_status="AI Scan Complete - Pending Human Verification",
+                            assigned_salesman="Unassigned",
+                            human_approved=0,
+                            catalog_available_stock=c_stock,
+                            verified_live_stock=0
+                        )
                     except Exception as e:
                         st.error(f"Analysis error: {str(e)}")
                         
@@ -1428,113 +1569,386 @@ with tabs[1]:
                 status = res.get("match_status", "MATCH_FOUND")
                 is_btn = res.get("is_button", True)
                 best_sku = res.get("best_match_sku")
+                top_candidates = res.get("top_candidates", [])
                 
-                mat_val = res.get("visual_analysis", {}).get("material_detected", "Garment Material")
-                size_val = res.get("visual_analysis", {}).get("estimated_size", "N/A")
-                conf_val = f"{res.get('match_confidence', 0)}%"
+                va = res.get("visual_analysis", {})
+                mat_val = html.escape(str(va.get("material_detected", "Garment Material")))
+                size_val = html.escape(str(va.get("estimated_size", "N/A")))
+                holes_val = html.escape(str(va.get("holes_detected", "N/A")))
+                color_val = html.escape(str(va.get("color_tone", "Natural")))
+                conf_num = min(int(res.get("match_confidence", 0)), 95)
                 
+                # Check human approval state
+                is_human_approved = bool(st.session_state.get("scanner_human_reviewed"))
+                approved_sku = st.session_state.get("scanner_approved_sku")
+                
+                # Requirement 4: Separate AI Analysis, Catalog Verification, Human Approval and Warehouse Stock Verification statuses
+                st.markdown(f"""
+                <div style="background: #f1f5f9; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px;">
+                    <div style="font-size: 11.5px; font-weight: 800; color: #334155; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">
+                        Enterprise 4-Stage Lifecycle Status Tracker:
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <span style="background: #dbeafe; color: #1e40af; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe;">
+                            1. AI Analysis: <b>Completed ({conf_num}%)</b>
+                        </span>
+                        <span style="background: {'#dcfce7' if (status == 'MATCH_FOUND' and best_sku) else '#fee2e2'}; color: {'#166534' if (status == 'MATCH_FOUND' and best_sku) else '#991b1b'}; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid {'#bbf7d0' if (status == 'MATCH_FOUND' and best_sku) else '#fca5a5'};">
+                            2. Catalog Match: <b>{'Found' if (status == 'MATCH_FOUND' and best_sku) else 'Non-Catalog'}</b>
+                        </span>
+                        <span style="background: {'#dcfce7' if is_human_approved else '#fef3c7'}; color: {'#166534' if is_human_approved else '#92400e'}; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid {'#bbf7d0' if is_human_approved else '#fde68a'};">
+                            3. Human Approval: <b>{'Approved' if is_human_approved else 'Pending Review'}</b>
+                        </span>
+                        <span style="background: #f3e8ff; color: #6b21a8; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid #e9d5ff;">
+                            4. Warehouse Stock: <b>Audit Pending</b>
+                        </span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Attribute Chips (Requirement 13 - Escaped)
                 st.markdown(f"""
                 <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
-                    <div style="flex: 1.3; min-width: 140px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
-                        <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Detected Material</div>
-                        <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px;">{mat_val}</div>
+                    <div style="flex: 1.2; min-width: 130px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                        <div style="font-size: 10.5px; text-transform: uppercase; color: #64748b; font-weight: 700;">Detected Material</div>
+                        <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 2px;">{mat_val}</div>
                     </div>
-                    <div style="flex: 1.1; min-width: 120px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
-                        <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Ligne Size</div>
-                        <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px;">{size_val}</div>
+                    <div style="flex: 1; min-width: 100px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                        <div style="font-size: 10.5px; text-transform: uppercase; color: #64748b; font-weight: 700;">Holes</div>
+                        <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 2px;">{holes_val}</div>
                     </div>
-                    <div style="flex: 0.8; min-width: 90px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
-                        <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Match Status</div>
-                        <div style="font-size: 16px; font-weight: 800; color: {'#16a34a' if status == 'MATCH_FOUND' and best_sku else '#dc2626'}; margin-top: 2px;">
-                            {'100% Verified' if status == 'MATCH_FOUND' and best_sku else ('No Button' if status == 'NO_BUTTON_DETECTED' else 'Custom Check')}
+                    <div style="flex: 1; min-width: 100px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                        <div style="font-size: 10.5px; text-transform: uppercase; color: #64748b; font-weight: 700;">Ligne Size</div>
+                        <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 2px;">{size_val}</div>
+                    </div>
+                    <div style="flex: 1; min-width: 100px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                        <div style="font-size: 10.5px; text-transform: uppercase; color: #64748b; font-weight: 700;">Match Status</div>
+                        <div style="font-size: 13.5px; font-weight: 800; color: {'#16a34a' if is_human_approved else '#d97706'}; margin-top: 2px;">
+                            {'Verified by Operator' if is_human_approved else f'Candidate Match ({conf_num}%)'}
                         </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
+                # Check for Non-Button or Non-Catalog
                 if status == "NO_BUTTON_DETECTED" or not is_btn:
-                    st.warning("⚠️ **इस फोटो में कोई बटन नहीं दिखा (No Garment Button Detected)**")
-                    st.info("💡 **मार्गदर्शन:** इस फोटो में कोई गारमेंट बटन नहीं दिख रहा है। कृपया कैमरे को सीधा बटन के पास ले जाएँ और अच्छी रोशनी में केवल बटन की साफ़ फोटो लें।")
+                    st.warning("⚠️ **इस फोटो में कोई गारमेंट बटन नहीं मिला (No Garment Button Detected)**")
+                    st.info("💡 **मार्गदर्शन:** कृपया कैमरे को सीधा बटन के पास ले जाएँ और केवल बटन की साफ़ क्लोज़-अप फोटो लें।")
                     
                 elif status == "NOT_IN_CATALOG" or not best_sku:
-                    st.warning("🔍 **इस टाइप का बटन हमारे रेडी कैटलॉग में उपलब्ध नहीं है**")
+                    # Requirement 6: Remove the first-catalog-product fallback for unknown SKUs
+                    st.warning("🔍 **इस टाइप का बटन हमारे रेडी कैटलॉग में उपलब्ध नहीं है (Custom Non-Catalog Inquiry)**")
                     st.markdown(f"""
-                    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 6px 0; color: #92400e;">⚠️ रेडी स्टॉक में नहीं मिला (Custom Inquiry)</h4>
-                        <p style="margin: 0; color: #78350f; font-size: 14px; line-height: 1.5;">
-                            <b>पहचाना गया:</b> {mat_val} • {res.get('visual_analysis', {}).get('holes_detected', '')}<br>
-                            यह विशिष्ट डिज़ाइन वर्तमान में हमारे स्टैंडर्ड रेडी स्टॉक में सक्रिय नहीं है। हम आपकी आवश्यकता अपनी <b>मैनेजमेंट और प्रोडक्शन टीम</b> से बात करके आपको बता देंगे कि क्या यह आपकी आवश्यक मात्रा के लिए विशेष रूप से तैयार किया जा सकता है।
+                    <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                        <h4 style="margin: 0 0 6px 0; color: #92400e;">⚠️ रेडी स्टॉक में नहीं मिला — कस्टम डेवलपमेंट चेक आवश्यक</h4>
+                        <p style="margin: 0; color: #78350f; font-size: 13.5px; line-height: 1.5;">
+                            <b>पहचाना गया विवरण:</b> {mat_val} • {holes_val} • {size_val}<br>
+                            यह विशिष्ट बटन डिज़ाइन हमारे स्टैंडर्ड रेडी स्टॉक कैटलॉग में उपलब्ध नहीं है। कोई डिफ़ॉल्ट SKU असाइन नहीं किया गया है।
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
                     
+                    # Requirement 10: Make Log Custom Inquiry persist a record and display its inquiry ID
+                    if st.button("🏍️ Log Custom Inquiry in Database", type="primary", key="btn_log_custom_db", use_container_width=True):
+                        photo_b64_str = base64.b64encode(selected_img_bytes).decode("utf-8") if selected_img_bytes else ""
+                        db.log_scanner_inquiry(
+                            inquiry_id=target_inq_id,
+                            phone=clean_scan_phone,
+                            buyer_name=scan_buyer_name,
+                            photo_b64=photo_b64_str,
+                            matched_sku="Custom / Non-Catalog",
+                            matched_name=f"Custom {mat_val} Button",
+                            matched_size=size_val,
+                            quantity=0,
+                            notes=buyer_notes,
+                            crm_status="Custom Non-Catalog Development",
+                            assigned_salesman="Unassigned",
+                            human_approved=0,
+                            catalog_available_stock=0,
+                            verified_live_stock=0
+                        )
+                        st.success(f"✅ Custom Inquiry successfully logged! Inquiry ID: **{target_inq_id}** saved in database for production liaison.")
                 else:
-                    st.success("✅ Match Successfully Verified in ABC Buttons Catalog!")
-                    matched_item = next((x for x in st.session_state.live_catalog if x["sku"] == best_sku), st.session_state.live_catalog[0])
+                    # Requirement 2: Top 3 catalog SKU candidates with evidence-based confidence scores
+                    st.markdown("##### 🏆 Top 3 Catalog SKU Candidates (AI Evidence Ranked)")
+                    st.caption("AI ने विज़न मिलान के आधार पर शीर्ष 3 संभावित SKU रैंक किए हैं। कृपया सही SKU को अप्रूव करें:")
                     
-                    st.markdown("---")
-                    # Side by side visual verification
-                    col_cat_img, col_cat_details = st.columns([1, 2])
-                    with col_cat_img:
-                        match_img_path = os.path.join(IMG_DIR, f"{matched_item['sku']}.jpg")
-                        if os.path.exists(match_img_path):
-                            st.image(match_img_path, caption=f"Catalog Image ({matched_item['sku']})", use_container_width=True)
-                        else:
-                            st.info(f"🔘 Image: {matched_item['sku']}")
-                    with col_cat_details:
-                        st.markdown(f"### 🏆 Verified SKU: **{matched_item['name']}**")
-                        st.markdown(f"**Official SKU Code:** `{matched_item['sku']}` | **Category:** {matched_item['category']}")
-                        st.markdown(f"**Size:** {matched_item['size_ligne']} | **Holes:** {matched_item['holes']}")
-                        st.markdown(f"**B2B Rate:** :green[**₹{matched_item['rate_per_gross']} / Gross**] (1 Gross = 144 pcs)")
-                        st.markdown(f"**Available Ready Stock:** :blue[**{matched_item['stock_gross']:,} Gross**] ({matched_item['stock_gross']*144:,} Pieces)")
-                        st.markdown(f"**Best Recommended For:** *{matched_item['recommended_garment']}*")
-                        
-                    st.caption(f"**AI Verification Logic:** {res.get('match_reason', 'Identical material finish, hole spacing, and rim texture.')}")
-                
-                st.markdown("#### 💬 Automated WhatsApp Message to Buyer (Sent in 3 Seconds):")
-                wa_msg = res.get("whatsapp_buyer_draft", "")
-                st.text_area("WhatsApp Message:", value=wa_msg, height=125)
-                
-                encoded_wa = urllib.parse.quote(wa_msg)
-                c_wa1, c_wa2 = st.columns([1.2, 1])
-                with c_wa1:
-                    target_phone = st.text_input("Buyer WhatsApp Mobile # (Optional):", value="+91 93157 02804", key="tab1_wa_phone")
-                with c_wa2:
-                    st.write("")
-                    st.write("")
-                    clean_num = "".join(ch for ch in target_phone if ch.isdigit())
-                    if send_whatsapp_text and st.button("⚡ Send Direct via Official Meta API", key="send_meta_api_tab1", help="Dispatches directly via Meta Official Cloud API"):
-                        p_num = clean_num if clean_num else "919315702804"
-                        with st.spinner(f"Dispatching to +{p_num}..."):
-                            res_api = send_whatsapp_text(p_num, wa_msg)
-                            if res_api.get("success"):
-                                st.success(f"🚀 Delivered via Official Meta API to +{p_num}!")
-                                st.balloons()
-                            else:
-                                st.error(f"API Error: {res_api.get('error')}")
-                
-                clean_num = "".join(ch for ch in target_phone if ch.isdigit())
-                wa_url = f"https://wa.me/{clean_num}?text={encoded_wa}" if clean_num else f"https://api.whatsapp.com/send?text={encoded_wa}"
+                    # Requirement 3: Add mandatory human review for low-confidence or ambiguous matches
+                    is_low_conf = (conf_num < 75)
+                    is_ambiguous = False
+                    if len(top_candidates) >= 2:
+                        diff = abs(top_candidates[0].get("confidence", 0) - top_candidates[1].get("confidence", 0))
+                        if diff < 10:
+                            is_ambiguous = True
+                            
+                    if (is_low_conf or is_ambiguous) and not is_human_approved:
+                        st.markdown(f"""
+                        <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;">
+                            <span style="color: #b45309; font-weight: 800; font-size: 13px;">⚠️ Mandatory Human Review Required:</span>
+                            <span style="color: #92400e; font-size: 12.5px;"> AI confidence is {conf_num}% or multiple close variants exist. An operator must review and approve the candidate before quotation or WhatsApp reply.</span>
+                        </div>
+                        """, unsafe_allow_html=True)
                     
-                c_b1, c_b2, c_b3 = st.columns([1.3, 1, 1.2])
-                with c_b1:
-                    st.link_button("📲 Open in WhatsApp", wa_url, type="primary", use_container_width=True)
-                with c_b2:
-                    if st.button("📋 Copy Message", use_container_width=True):
-                        st.toast("WhatsApp Message copied to clipboard!")
-                with c_b3:
-                    if status == "MATCH_FOUND" and best_sku:
-                        if st.button("📄 Generate Quote (Tab 5)", use_container_width=True):
-                            st.session_state["quote_sku"] = matched_item["sku"]
-                            st.success(f"✅ SKU **{matched_item['sku']}** locked for Quotation! Open **Tab 5**.")
-                            st.toast(f"Locked {matched_item['sku']} for Tab 5 Quotation!")
-                    else:
-                        if st.button("🏍️ Log Custom Inquiry (Tab 3)", use_container_width=True):
-                            st.toast("Custom inquiry noted for management check!")
-        else:
-            st.info("👈 Please select or upload a photo on the left to start matching.")
+                    # Display Top Candidates in 3 comparative columns
+                    c_cols = st.columns(min(len(top_candidates), 3))
+                    for idx, cand in enumerate(top_candidates[:3]):
+                        with c_cols[idx]:
+                            cand_sku = cand.get("sku")
+                            cand_conf = cand.get("confidence", 0)
+                            is_this_approved = (approved_sku == cand_sku)
+                            
+                            border_color = "#16a34a" if is_this_approved else ("#3b82f6" if idx == 0 else "#cbd5e1")
+                            bg_color = "#f0fdf4" if is_this_approved else ("#f8fafc" if idx == 0 else "#ffffff")
+                            
+                            st.markdown(f"""
+                            <div style="border: 2px solid {border_color}; background: {bg_color}; border-radius: 10px; padding: 12px; margin-bottom: 10px; min-height: 290px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-weight: 800; font-size: 12px; color: {'#16a34a' if is_this_approved else '#1e40af'};">
+                                        {'✅ APPROVED' if is_this_approved else f'Rank {cand.get("rank", idx+1)}'}
+                                    </span>
+                                    <span style="background: #e2e8f0; color: #334155; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px;">
+                                        {cand_conf}% Conf
+                                    </span>
+                                </div>
+                                <div style="font-weight: 800; font-size: 14px; color: #0f172a; margin-bottom: 2px;">{html.escape(cand_sku)}</div>
+                                <div style="font-size: 12px; color: #475569; margin-bottom: 6px; line-height: 1.25;">{html.escape(cand.get("name", ""))}</div>
+                                <div style="font-size: 11.5px; color: #64748b; line-height: 1.4;">
+                                    • Material: <b>{html.escape(cand.get("material", ""))}</b><br>
+                                    • Holes: <b>{html.escape(cand.get("holes", ""))}</b><br>
+                                    • Size: <b>{html.escape(cand.get("size_ligne", ""))}</b><br>
+                                    • Rate: <b style="color: #166534;">₹{cand.get("rate_per_gross", 0):.1f}/Gr</b><br>
+                                    • Catalog Stock: <b style="color: #1e40af;">{cand.get("stock_gross", 0):,} Gr</b>
+                                </div>
+                                <div style="font-size: 10.5px; color: #64748b; margin-top: 6px; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
+                                    <i>{html.escape(cand.get("evidence_breakdown", ""))}</i>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            c_img_path = os.path.join(IMG_DIR, f"{cand_sku}.jpg")
+                            if os.path.exists(c_img_path):
+                                st.image(c_img_path, caption=f"Catalog Image ({cand_sku})", use_container_width=True)
+                            
+                            if st.button(f"✅ Approve #{cand.get('rank', idx+1)} ({cand_sku})", key=f"btn_appr_cand_{cand_sku}", use_container_width=True):
+                                st.session_state["scanner_approved_sku"] = cand_sku
+                                st.session_state["scanner_approved_cand"] = cand
+                                st.session_state["scanner_human_reviewed"] = True
+                                
+                                # Log approval to transactional DB with true detected quantity and size
+                                photo_b64_str = base64.b64encode(selected_img_bytes).decode("utf-8") if selected_img_bytes else ""
+                                cand_size_opt = cand.get("size_ligne", "").split()[0] if cand.get("size_ligne") else "18L"
+                                db.log_scanner_inquiry(
+                                    inquiry_id=target_inq_id,
+                                    phone=clean_scan_phone,
+                                    buyer_name=scan_buyer_name,
+                                    photo_b64=photo_b64_str,
+                                    matched_sku=cand_sku,
+                                    matched_name=cand.get("name", "Button Inquiry"),
+                                    matched_size=cand_size_opt,
+                                    quantity=detected_qty,
+                                    notes=buyer_notes,
+                                    crm_status="Human Approved - Ready for Quote",
+                                    assigned_salesman="Unassigned",
+                                    human_approved=1,
+                                    catalog_available_stock=cand.get("stock_gross", 0),
+                                    verified_live_stock=0
+                                )
+                                st.success(f"✅ SKU **{cand_sku}** approved by human operator!")
+                                st.rerun()
 
-# ----------------- TAB 2: CATALOG & IMAGE GALLERY -----------------
+                    # Active Approved Item Summary
+                    active_candidate = st.session_state.get("scanner_approved_cand") or (top_candidates[0] if top_candidates else None)
+                    if active_candidate:
+                        active_sku = active_candidate.get("sku")
+                        
+                        # Requirement 7: Approval is invalidated if SKU is changed or not approved for this specific candidate
+                        approved_sku = st.session_state.get("scanner_approved_sku")
+                        is_human_approved = bool(st.session_state.get("scanner_human_reviewed") and approved_sku and approved_sku == active_sku)
+                        
+                        # Requirement 14: Separate catalog stock from independently verified live warehouse stock
+                        st.markdown(f"""
+                        <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 12px 16px; margin: 12px 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                                <div>
+                                    <span style="font-size: 13.5px; font-weight: 800; color: #0f172a;">
+                                        Selected SKU: <span style="color: #2563eb;">{html.escape(active_sku)}</span> — {html.escape(active_candidate.get('name', ''))}
+                                    </span>
+                                </div>
+                                <div style="font-size: 12px;">
+                                    Catalog Stock: <b style="color: #1e40af;">{active_candidate.get('stock_gross', 0):,} Gross</b> &nbsp;|&nbsp; 
+                                    Verified Live Godown Stock: <b style="color: #b45309;">Pending Central Godown Audit</b>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Requirement 3: Explicit Confirmed Size Selection (No implicit 18L fallback)
+                        raw_size_str = active_candidate.get("size_ligne", "")
+                        found_sizes = re.findall(r'\b\d+L\b', raw_size_str)
+                        if not found_sizes:
+                            found_sizes = ["14L", "18L", "24L"]
+                        avail_sizes = list(dict.fromkeys(found_sizes))
+                        
+                        est_size = res.get("visual_analysis", {}).get("estimated_size", "")
+                        clean_est = re.search(r'\b\d+L\b', str(est_size))
+                        detected_size_val = clean_est.group(0) if clean_est else ""
+                        
+                        c_s1, c_s2 = st.columns([1.2, 1])
+                        with c_s1:
+                            default_sz_idx = 0
+                            if detected_size_val and detected_size_val in avail_sizes:
+                                default_sz_idx = avail_sizes.index(detected_size_val)
+                            
+                            user_chosen_size = st.selectbox(
+                                "Confirmed Button Size (Ligne):",
+                                options=avail_sizes,
+                                index=default_sz_idx,
+                                key=f"scan_size_input_{active_sku}"
+                            )
+                        with c_s2:
+                            st.markdown(f"<div style='font-size: 12px; color: #475569; margin-top: 28px;'>Catalog Spec: <b>{html.escape(raw_size_str)}</b></div>", unsafe_allow_html=True)
+
+                        # Requirement 11: Implement complete scanner-to-quotation handoff
+                        # Fix Point 1: Editable buyer requirement quantity, never hardcoded 200. Default to 0 when unspecified.
+                        c_q1, c_q2 = st.columns([1.2, 1])
+                        with c_q1:
+                            user_chosen_qty = st.number_input(
+                                "Buyer Order Quantity (Gross):",
+                                min_value=0,
+                                max_value=100000,
+                                value=detected_qty if detected_qty > 0 else 0,
+                                step=25,
+                                key=f"scan_qty_input_{active_sku}"
+                            )
+                        with c_q2:
+                            if user_chosen_qty > 0:
+                                st.markdown(f"<div style='font-size: 12px; color: #64748b; margin-top: 28px;'>Total: <b>{user_chosen_qty * 144:,} Pieces</b></div>", unsafe_allow_html=True)
+                            else:
+                                st.markdown("<div style='font-size: 12px; color: #dc2626; margin-top: 28px;'><b>⚠️ 0 Gross (Enter Required Quantity)</b></div>", unsafe_allow_html=True)
+                        
+                        has_valid_qty = (user_chosen_qty > 0)
+                        if not has_valid_qty:
+                            st.warning("⚠️ **Buyer Order Quantity Required:** Buyer has not specified an order quantity. Please enter the required Gross quantity (e.g. 50, 100, 250 Gross) before generating a quotation.")
+                        
+                        # Fix Point 3 & Requirement 7: Mandatory Human Approval & Non-Zero Quantity required before quotation handoff button is active
+                        if not is_human_approved:
+                            st.warning("⚠️ **Human Approval Required:** Please click '✅ Approve' on the correct candidate above before generating a formal quotation.")
+                            st.button("🧾 Generate Quote in Tab 5 (Approval Required)", key="btn_scanner_quote_disabled", disabled=True, use_container_width=True)
+                        elif not has_valid_qty:
+                            st.button("🧾 Generate Quote in Tab 5 (Enter Quantity First)", key="btn_scanner_quote_no_qty", disabled=True, use_container_width=True)
+                        else:
+                            if st.button("🧾 Generate Quote in Tab 5 (Complete Handoff)", key="btn_scanner_quote_handoff", type="primary", use_container_width=True):
+                                st.session_state["preset_quote_buyer"] = scan_buyer_name
+                                # Fix Point 2: Never fall back to hardcoded 919315702804; keep clean phone or empty
+                                st.session_state["preset_quote_phone"] = clean_scan_phone if clean_scan_phone else ""
+                                st.session_state["preset_quote_sku"] = active_sku
+                                st.session_state["preset_quote_size"] = user_chosen_size # Confirmed size, no implicit 18L!
+                                st.session_state["preset_quote_qty"] = int(user_chosen_qty)
+                                st.session_state["preset_quote_inquiry_id"] = target_inq_id
+                                st.session_state["quote_sku"] = active_sku
+                                st.success(f"✅ Data for **{scan_buyer_name}** (SKU: **{active_sku}**, Size: **{user_chosen_size}**, {user_chosen_qty} Gross) transferred to **Tab 5 Quotation Desk**! Click Tab 5 above to generate formal proforma invoice.")
+
+                # Outbound WhatsApp Section (Requirement 2, 7, 8, 9, 13)
+                st.markdown("<hr style='margin: 16px 0;'>", unsafe_allow_html=True)
+                st.markdown("##### 💬 Outbound WhatsApp Message to Buyer")
+                
+                default_wa_draft = res.get("whatsapp_buyer_draft", "")
+                # Requirement 2: Capture live operator edits in text area
+                operator_wa_draft = st.text_area("WhatsApp Message Draft (Operator Editable):", value=default_wa_draft, height=105, key="scanner_wa_draft_ta")
+                active_wa_msg = operator_wa_draft.strip() if operator_wa_draft and operator_wa_draft.strip() else default_wa_draft
+                
+                # Requirement 9: Implement a real Copy Message clipboard action using exact operator-edited draft
+                st.code(active_wa_msg, language=None)
+                copy_html = f"""
+                <button onclick="navigator.clipboard.writeText({json.dumps(active_wa_msg)}); alert('✅ WhatsApp Message copied to clipboard!');" 
+                        style="background: #f1f5f9; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 6px 14px; font-weight: 700; font-size: 12px; cursor: pointer; color: #1e293b;">
+                    📋 One-Click Copy to Clipboard
+                </button>
+                """
+                st.markdown(copy_html, unsafe_allow_html=True)
+                
+                # Requirement 7: Remove fixed WhatsApp recipient numbers. Require a validated buyer selection.
+                c_w1, c_w2 = st.columns([1.2, 1])
+                with c_w1:
+                    target_wa_phone = st.text_input("Recipient WhatsApp Number:", value=clean_scan_phone, placeholder="Enter 10-12 digit mobile number", key="scan_target_wa_phone")
+                    clean_dest_phone = "".join(ch for ch in target_wa_phone if ch.isdigit())
+                    is_valid_phone = bool(re.match(r'^(?:91)?[6-9]\d{9}$', clean_dest_phone))
+                    if clean_dest_phone and not is_valid_phone:
+                        st.caption("⚠️ Please enter a valid 10-digit mobile number (e.g. 9811234567)")
+                    elif is_valid_phone:
+                        st.caption(f"✅ Validated Indian Mobile Number (+{clean_dest_phone})")
+                
+                with c_w2:
+                    st.write("")
+                    wa_confirm = st.checkbox("I verify buyer identity & approve dispatch", key="scan_wa_confirm_chk")
+                    
+                already_dispatched_wamid = st.session_state.get("scanner_dispatch_wamid")
+                can_send = is_valid_phone and wa_confirm and send_whatsapp_text is not None and not already_dispatched_wamid
+                
+                c_act1, c_act2 = st.columns(2)
+                with c_act1:
+                    encoded_wa_msg = urllib.parse.quote(active_wa_msg)
+                    wa_web_url = f"https://wa.me/{clean_dest_phone}?text={encoded_wa_msg}" if clean_dest_phone else f"https://api.whatsapp.com/send?text={encoded_wa_msg}"
+                    st.link_button("📲 Open in WhatsApp Web", wa_web_url, type="secondary", use_container_width=True)
+                    
+                with c_act2:
+                    # Requirement 8: Distinguish API Accepted, Sent, Delivered, Read and Failed, and prevent duplicate sends
+                    if already_dispatched_wamid:
+                        st.info(f"ℹ️ Message already accepted by Meta API (wamid: {already_dispatched_wamid[:20]}...). Duplicate send prevented.")
+                    else:
+                        if st.button("⚡ Send Direct via Official Meta API", key="btn_send_meta_scanner", type="primary", disabled=not can_send, use_container_width=True):
+                            with st.spinner(f"Dispatching to +{clean_dest_phone}..."):
+                                res_meta = send_whatsapp_text(clean_dest_phone, active_wa_msg)
+                                # Fix Point 2: Strict Meta WAMID validation - require valid message ID before marking dispatch success
+                                w_id = None
+                                if isinstance(res_meta, dict):
+                                    msg_arr = res_meta.get("messages") or (isinstance(res_meta.get("data"), dict) and res_meta.get("data", {}).get("messages")) or []
+                                    if msg_arr and isinstance(msg_arr, list) and len(msg_arr) > 0:
+                                        cand_id = msg_arr[0].get("id")
+                                        if cand_id and str(cand_id).strip():
+                                            w_id = str(cand_id).strip()
+                                
+                                is_success = bool(w_id and not (isinstance(res_meta, dict) and res_meta.get("error")))
+                                if is_success:
+                                    st.session_state["scanner_dispatch_wamid"] = w_id
+                                    # Fix Point 3 & Requirement 2: Log exact operator-edited message strictly as ACCEPTED
+                                    db.sync_chat_event_db(clean_dest_phone, scan_buyer_name, "operator", "text", active_wa_msg, status="ACCEPTED", wamid=w_id)
+                                    db.log_outbound_delivery(w_id, clean_dest_phone, "text", active_wa_msg, status="ACCEPTED")
+                                    st.success(f"🚀 Accepted by Meta Cloud API (wamid: {w_id}). Status: ACCEPTED (Queued for Delivery)")
+                                else:
+                                    err_meta = "No valid Meta message ID (wamid) returned by server"
+                                    if isinstance(res_meta, dict):
+                                        err_meta = res_meta.get("error") or res_meta.get("message") or err_meta
+                                    st.error(f"❌ Failed to dispatch message via WhatsApp: {err_meta}")
+
+                # Display Meta Webhook delivery status if a message was dispatched
+                last_wamid = st.session_state.get("scanner_dispatch_wamid")
+                if last_wamid:
+                    delivery_info = db.get_message_delivery_status(last_wamid)
+                    del_stat = delivery_info.get("status", "ACCEPTED").upper()
+                    if del_stat == "READ":
+                        tick_str = "✓✓ Read by Buyer"
+                        t_color = "#38bdf8"
+                    elif del_stat == "DELIVERED":
+                        tick_str = "✓✓ Delivered to Recipient Mobile"
+                        t_color = "#10b981"
+                    elif del_stat == "SENT":
+                        tick_str = "✓ Transmitted to Carrier Network (Sent)"
+                        t_color = "#64748b"
+                    elif del_stat == "FAILED":
+                        tick_str = f"⚠️ Delivery Failed ({delivery_info.get('error_message', '')})"
+                        t_color = "#ef4444"
+                    else: # ACCEPTED
+                        tick_str = "✓ Accepted by Meta Cloud API (Queued for Carrier Delivery)"
+                        t_color = "#f59e0b"
+                    st.markdown(f"""
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 12px; margin-top: 8px; font-size: 12px; color: {t_color}; font-weight: 700;">
+                        Live Meta Delivery Status: {tick_str}
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("👈 Please select or upload a button photo on the left to start matching.")
+
+
 with tabs[2]:
     st.subheader("📂 ABC Buttons Live Master Catalog & Real Product Gallery")
     st.caption("यहाँ सभी बटनों की तस्वीरें और विवरण मौजूद हैं। सभी दरें व स्टॉक अनिवार्य रूप से **GROSS** में हैं (1 Gross = 144 Pieces)।")
@@ -1795,7 +2209,9 @@ with tabs[4]:
         inquiry_sources.append(f"🏍️ Latest Salesman Inquiry: {c_name} ({b_desc} - {b_est})")
     
     if "quote_sku" in st.session_state:
-        inquiry_sources.append(f"🔍 Visual Matcher Inquiry: SKU {st.session_state['quote_sku']}")
+        scanner_buyer = st.session_state.get("preset_quote_buyer", "Buyer")
+        scanner_qty = st.session_state.get("preset_quote_qty", 50)
+        inquiry_sources.append(f"🔍 Scanner Match: {scanner_buyer} — SKU: {st.session_state['quote_sku']} ({scanner_qty} Gross)")
         
     inquiry_sources.append("✏️ Custom / Manual Quotation (Enter / Edit Any Details)")
     
@@ -1806,13 +2222,13 @@ with tabs[4]:
     default_gst = "07AAACS1234F1Z5"
     default_sku_code = "ABC-139" if any("139" in x["sku"] for x in st.session_state.live_catalog) else st.session_state.live_catalog[0]["sku"]
     default_gross = 350
-    default_phone = "919315702804"
+    default_phone = ""
     
     if selected_source.startswith("💬") and latest_wa:
         default_buyer = latest_wa.get("buyer_name", "Anoop Goel")
         default_sku_code = latest_wa.get("sku", "ABC-137")
-        default_gross = int(latest_wa.get("qty_gross", 200))
-        default_phone = latest_wa.get("phone", "919315702804")
+        default_gross = int(latest_wa.get("qty_gross", 50))
+        default_phone = latest_wa.get("phone", "")
     elif selected_source.startswith("🏍️") and "last_parsed_sample" in st.session_state:
         p_last = st.session_state["last_parsed_sample"]
         default_buyer = p_last.get("company_name") or default_buyer
@@ -1827,8 +2243,10 @@ with tabs[4]:
         if m_q:
             default_gross = int(m_q.group(1))
     elif selected_source.startswith("🔍") and "quote_sku" in st.session_state:
-        default_sku_code = st.session_state["quote_sku"]
-        default_gross = 100
+        default_sku_code = st.session_state.get("preset_quote_sku") or st.session_state["quote_sku"]
+        default_buyer = st.session_state.get("preset_quote_buyer") or default_buyer
+        default_phone = st.session_state.get("preset_quote_phone", "")
+        default_gross = max(5, int(st.session_state.get("preset_quote_qty") or 50))
         
     st.markdown("---")
     
@@ -1849,6 +2267,10 @@ with tabs[4]:
         selected_sku_text = st.selectbox("Select Button SKU:", sku_options, index=default_index)
         selected_sku = selected_sku_text.split()[0]
         curr_item = next(x for x in st.session_state.live_catalog if x["sku"] == selected_sku)
+        
+        # Check if a specific confirmed size was handed off from scanner
+        preset_size = st.session_state.get("preset_quote_size") if st.session_state.get("preset_quote_sku") == selected_sku else None
+        active_quote_size = preset_size or curr_item.get('size_ligne', '')
         
         q_gross_qty = st.number_input("Order Quantity in GROSS (1 Gross = 144 Pcs):", min_value=5, max_value=10000, value=default_gross, step=5)
         st.markdown(f"<span class='gross-badge'>= {q_gross_qty} Gross ({q_gross_qty * 144:,} Total Individual Pieces)</span>", unsafe_allow_html=True)
@@ -1912,7 +2334,7 @@ with tabs[4]:
                         <td>
                             <b style="color: #0F172A; font-size: 13.5px;">{curr_item['name']}</b><br>
                             <span class="spec-badge">SKU: {curr_item['sku']}</span>
-                            <span class="spec-badge">SIZE: {curr_item.get('size_ligne', '')}</span>
+                            <span class="spec-badge">SIZE: {active_quote_size}</span>
                             <span class="spec-badge">{curr_item.get('holes', '')}</span>
                         </td>
                         <td style="text-align: center;">
@@ -1963,7 +2385,7 @@ with tabs[4]:
             buyer_gst=q_gst,
             item_sku=selected_sku,
             item_name=curr_item['name'],
-            item_size=curr_item.get('size_ligne', ''),
+            item_size=active_quote_size,
             qty_gross=q_gross_qty,
             rate_gross=curr_item['rate_per_gross'],
             discount_pct=q_discount

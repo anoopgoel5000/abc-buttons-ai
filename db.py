@@ -79,6 +79,18 @@ def init_db():
             received_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS inbound_message_lifecycle (
+            msg_id TEXT PRIMARY KEY,
+            phone TEXT,
+            msg_type TEXT,
+            status TEXT,
+            attempt_count INTEGER DEFAULT 1,
+            error_message TEXT,
+            received_at TEXT,
+            updated_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_inbound_msg_phone ON inbound_message_lifecycle (phone);
+
         CREATE TABLE IF NOT EXISTS outbound_delivery_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             wamid TEXT,
@@ -233,23 +245,24 @@ def get_session_db(phone: str) -> dict:
             "suggested_alternatives": [],
             "waiting_for_custom_mfg_qty": False,
             "courtesy_count": 0,
+            "human_takeover": 0,
             "updated_at": now_str
         }
         
         cur.execute("""
             INSERT INTO buyer_sessions 
-            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, human_takeover, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             key, init_sess["contact_name"], init_sess["matched_sku"], init_sess["matched_name"],
             init_sess["matched_size"], init_sess["quantity"], int(init_sess["has_photo"]),
             0, 0, init_sess["last_active_sku"], 0, 0, "[]", 0, 0,
-            init_sess["customer_required_quantity"] or 0, init_sess["catalog_available_stock"] or 0, init_sess["verified_live_stock"] or 0, now_str
+            init_sess["customer_required_quantity"] or 0, init_sess["catalog_available_stock"] or 0, init_sess["verified_live_stock"] or 0, 0, now_str
         ))
         return init_sess
 
 def save_session_db(phone: str, session: dict):
-    """Save session state to transactional SQLite with structured stock & requirement fields."""
+    """Save session state to transactional SQLite with safe UPSERT preserving human_takeover and CRM state."""
     key = normalize_phone(phone)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if session.get("quantity") is None and session.get("customer_required_quantity") is None:
@@ -260,12 +273,41 @@ def save_session_db(phone: str, session: dict):
         cust_qty = session.get("customer_required_quantity") if session.get("customer_required_quantity") is not None else session.get("quantity")
     cat_stock = session.get("catalog_available_stock") or 0
     live_stock = session.get("verified_live_stock") or 0
-    
+    takeover_val = 1 if session.get("human_takeover") else 0
+
     with get_db_connection() as conn:
+        cur = conn.cursor()
+        # If takeover is not explicitly provided in session dict, check existing row to avoid wiping it
+        if "human_takeover" not in session:
+            cur.execute("SELECT human_takeover FROM buyer_sessions WHERE phone = ?", (key,))
+            existing_row = cur.fetchone()
+            if existing_row and existing_row["human_takeover"] is not None:
+                takeover_val = int(existing_row["human_takeover"])
+
         conn.execute("""
-            INSERT OR REPLACE INTO buyer_sessions
-            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO buyer_sessions
+            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, human_takeover, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(phone) DO UPDATE SET
+                contact_name = excluded.contact_name,
+                matched_sku = COALESCE(excluded.matched_sku, buyer_sessions.matched_sku),
+                matched_name = COALESCE(excluded.matched_name, buyer_sessions.matched_name),
+                matched_size = COALESCE(excluded.matched_size, buyer_sessions.matched_size),
+                quantity = excluded.quantity,
+                has_photo = MAX(buyer_sessions.has_photo, excluded.has_photo),
+                has_address = MAX(buyer_sessions.has_address, excluded.has_address),
+                history_count = excluded.history_count,
+                last_active_sku = COALESCE(excluded.last_active_sku, buyer_sessions.last_active_sku),
+                waiting_for_similar_permission = excluded.waiting_for_similar_permission,
+                waiting_for_similar_approval = excluded.waiting_for_similar_approval,
+                suggested_alternatives = excluded.suggested_alternatives,
+                waiting_for_custom_mfg_qty = excluded.waiting_for_custom_mfg_qty,
+                courtesy_count = excluded.courtesy_count,
+                customer_required_quantity = excluded.customer_required_quantity,
+                catalog_available_stock = excluded.catalog_available_stock,
+                verified_live_stock = excluded.verified_live_stock,
+                human_takeover = excluded.human_takeover,
+                updated_at = excluded.updated_at
         """, (
             key,
             session.get("contact_name", "Sir"),
@@ -285,6 +327,7 @@ def save_session_db(phone: str, session: dict):
             cust_qty or 0,
             cat_stock,
             live_stock,
+            takeover_val,
             now_str
         ))
 
@@ -321,21 +364,133 @@ def resolve_quoted_sku(context_msg_id: str, phone: str) -> dict:
             return dict(latest_row)
     return None
 
-# ----------------- WEBHOOK MESSAGE DEDUPLICATION (Requirement 6) -----------------
+# ----------------- WEBHOOK MESSAGE LIFECYCLE & DEDUPLICATION (Requirements 11, 12, 13) -----------------
+
+def record_inbound_message_lifecycle(msg_id: str, phone: str, msg_type: str = "text") -> dict:
+    """
+    Atomically registers an incoming message in the inbound_message_lifecycle table.
+    Lifecycle states: RECEIVED -> PROCESSING -> COMPLETED (or FAILED / RETRY_PENDING).
+    Returns:
+        {
+            "should_process": bool, # True if new or retryable
+            "status": str,          # Current status
+            "attempt_count": int
+        }
+    """
+    if not msg_id:
+        return {"should_process": True, "status": "RECEIVED", "attempt_count": 1}
+
+    key = normalize_phone(phone)
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT status, attempt_count FROM inbound_message_lifecycle WHERE msg_id = ?", (msg_id,))
+        row = cur.fetchone()
+
+        if row:
+            status = row["status"]
+            attempts = row["attempt_count"]
+            if status in ("COMPLETED", "PROCESSING"):
+                return {"should_process": False, "status": status, "attempt_count": attempts}
+            elif status == "RETRY_PENDING":
+                cur.execute("""
+                    UPDATE inbound_message_lifecycle
+                    SET status = 'PROCESSING', attempt_count = attempt_count + 1, updated_at = ?
+                    WHERE msg_id = ?
+                """, (now_str, msg_id))
+                return {"should_process": True, "status": "PROCESSING", "attempt_count": attempts + 1}
+            else:  # FAILED
+                return {"should_process": False, "status": status, "attempt_count": attempts}
+        else:
+            cur.execute("""
+                INSERT INTO inbound_message_lifecycle (msg_id, phone, msg_type, status, attempt_count, received_at, updated_at)
+                VALUES (?, ?, ?, 'PROCESSING', 1, ?, ?)
+            """, (msg_id, key, msg_type, now_str, now_str))
+            return {"should_process": True, "status": "PROCESSING", "attempt_count": 1}
+
+def update_inbound_message_status(msg_id: str, new_status: str, error_message: str = "") -> bool:
+    """
+    Updates the lifecycle status of an inbound message.
+    States: 'RECEIVED', 'PROCESSING', 'COMPLETED', 'FAILED', 'RETRY_PENDING'.
+    Syncs with processed_messages when COMPLETED.
+    """
+    if not msg_id:
+        return False
+
+    clean_status = (new_status or "").upper()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE inbound_message_lifecycle
+            SET status = ?, error_message = ?, updated_at = ?
+            WHERE msg_id = ?
+        """, (clean_status, error_message or "", now_str, msg_id))
+
+        if clean_status == "COMPLETED":
+            cur.execute("SELECT phone FROM inbound_message_lifecycle WHERE msg_id = ?", (msg_id,))
+            row = cur.fetchone()
+            phone = row["phone"] if row else ""
+            cur.execute("INSERT OR IGNORE INTO processed_messages (msg_id, phone, received_at) VALUES (?, ?, ?)", (msg_id, phone, now_str))
+
+    return True
+
+def get_inbound_message_status(msg_id: str) -> dict:
+    """Retrieve the current lifecycle record of an inbound WhatsApp message."""
+    if not msg_id:
+        return {"msg_id": "", "status": "NOT_FOUND", "attempt_count": 0}
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM inbound_message_lifecycle WHERE msg_id = ?", (msg_id,))
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+    return {"msg_id": msg_id, "status": "NOT_FOUND", "attempt_count": 0}
 
 def is_message_processed(msg_id: str, phone: str) -> bool:
-    """Check if WhatsApp message ID was already processed. If not, mark as processed atomically."""
+    """
+    Safe idempotency check. Returns True ONLY if message was already COMPLETED or is actively PROCESSING.
+    Does NOT prematurely mark message as processed.
+    """
     if not msg_id:
+        return False
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM inbound_message_lifecycle WHERE msg_id = ?", (msg_id,))
+        row = cur.fetchone()
+        if row and row["status"] in ("COMPLETED", "PROCESSING"):
+            return True
+        cur.execute("SELECT msg_id FROM processed_messages WHERE msg_id = ?", (msg_id,))
+        if cur.fetchone():
+            return True
+    return False
+
+def save_inquiry_with_photo(inquiry_id: str, phone: str, buyer_name: str, photo_b64: str, notes: str = "", crm_status: str = "New Inquiry") -> bool:
+    """Permanently links customer photo and CRM inquiry in live_inquiries."""
+    if not phone:
         return False
     key = normalize_phone(phone)
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT msg_id FROM processed_messages WHERE msg_id = ?", (msg_id,))
-        if cur.fetchone():
-            return True
-        cur.execute("INSERT INTO processed_messages (msg_id, phone, received_at) VALUES (?, ?, ?)", (msg_id, key, now_str))
-        return False
+        cur.execute("SELECT id, photo_b64 FROM live_inquiries WHERE phone = ?", (key,))
+        existing = cur.fetchone()
+        if existing:
+            saved_photo = photo_b64 or existing["photo_b64"] or ""
+            cur.execute("""
+                UPDATE live_inquiries
+                SET buyer_name = ?, photo_b64 = ?, notes = ?, status = ?, updated_at = ?
+                WHERE phone = ?
+            """, (buyer_name or "Buyer", saved_photo, notes or "", crm_status, now_str, key))
+        else:
+            cur.execute("""
+                INSERT INTO live_inquiries (id, phone, buyer_name, timestamp, photo_b64, status, notes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (inquiry_id or f"inq_{key}", key, buyer_name or "Buyer", now_str, photo_b64 or "", crm_status, notes or "", now_str))
+    export_to_data_store_json()
+    return True
 
 # ----------------- OUTBOUND DELIVERY LOGGING (Requirement 12) -----------------
 
@@ -439,10 +594,17 @@ def log_scanner_inquiry(
     
     with get_db_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT chat_messages FROM live_inquiries WHERE phone = ? OR id = ?", (key, inquiry_id))
+        cur.execute("SELECT * FROM live_inquiries WHERE phone = ? OR id = ?", (key, inquiry_id))
         row = cur.fetchone()
-        chat_list = json.loads(row["chat_messages"]) if row and row["chat_messages"] else []
+        existing_inq = dict(row) if row else {}
+        chat_list = json.loads(existing_inq.get("chat_messages") or "[]")
         
+        # Preserve existing human takeover and salesman assignment
+        preserved_takeover = existing_inq.get("human_takeover", 0)
+        final_salesman = assigned_salesman if assigned_salesman and assigned_salesman != "Unassigned" else existing_inq.get("assigned_salesman", "Unassigned")
+        final_buyer_name = buyer_name if buyer_name and buyer_name not in ["Buyer", "Customer", "Sir"] else existing_inq.get("buyer_name", buyer_name or "Buyer")
+        final_inq_id = existing_inq.get("id") or inquiry_id
+
         chat_list.append({
             "wamid": None,
             "sender": "scanner",
@@ -463,25 +625,40 @@ def log_scanner_inquiry(
              crm_status, customer_required_quantity, catalog_available_stock, verified_live_stock)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            inquiry_id, key, buyer_name or "Buyer", now_str, photo_b64 or "",
-            matched_sku or "Inquiry", matched_name or "Button Inquiry", matched_size or "",
-            quantity or 0, f"Scanned: {matched_sku}", notes or "",
-            json.dumps(chat_list, ensure_ascii=False), now_str, 0, assigned_salesman or "Unassigned",
-            crm_status, quantity or 0, catalog_available_stock or 0, verified_live_stock or 0
+            final_inq_id, key, final_buyer_name, now_str, photo_b64 or existing_inq.get("photo_b64", ""),
+            matched_sku or "Inquiry", matched_name or "Button Inquiry", matched_size or existing_inq.get("matched_size", ""),
+            quantity or existing_inq.get("quantity", 0), f"Scanned: {matched_sku}", notes or existing_inq.get("notes", ""),
+            json.dumps(chat_list, ensure_ascii=False), now_str, preserved_takeover, final_salesman,
+            crm_status, quantity or existing_inq.get("customer_required_quantity", 0), catalog_available_stock or 0, verified_live_stock or 0
         ))
         
         if phone and any(ch.isdigit() for ch in phone):
-            cur.execute("""
-                INSERT OR REPLACE INTO buyer_sessions
-                (phone, contact_name, matched_sku, matched_name, matched_size, quantity, 
-                 has_photo, last_active_sku, customer_required_quantity, catalog_available_stock, 
-                 verified_live_stock, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
-            """, (
-                key, buyer_name or "Buyer", matched_sku, matched_name, matched_size,
-                quantity or 0, matched_sku, quantity or 0, catalog_available_stock or 0,
-                verified_live_stock or 0, now_str
-            ))
+            cur.execute("SELECT * FROM buyer_sessions WHERE phone = ?", (key,))
+            sess_row = cur.fetchone()
+            if sess_row:
+                cur.execute("""
+                    UPDATE buyer_sessions
+                    SET matched_sku = ?, matched_name = ?, matched_size = ?,
+                        has_photo = 1, last_active_sku = ?, customer_required_quantity = ?,
+                        catalog_available_stock = ?, verified_live_stock = ?, updated_at = ?
+                    WHERE phone = ?
+                """, (
+                    matched_sku, matched_name, matched_size,
+                    matched_sku, quantity or 0, catalog_available_stock or 0,
+                    verified_live_stock or 0, now_str, key
+                ))
+            else:
+                cur.execute("""
+                    INSERT INTO buyer_sessions
+                    (phone, contact_name, matched_sku, matched_name, matched_size, quantity, 
+                     has_photo, last_active_sku, customer_required_quantity, catalog_available_stock, 
+                     verified_live_stock, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                """, (
+                    key, final_buyer_name, matched_sku, matched_name, matched_size,
+                    quantity or 0, matched_sku, quantity or 0, catalog_available_stock or 0,
+                    verified_live_stock or 0, now_str
+                ))
             
     export_to_data_store_json()
     return True

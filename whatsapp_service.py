@@ -14,8 +14,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
-PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "1406479542552212")
-DEFAULT_RECIPIENT = os.environ.get("TEST_RECIPIENT_PHONE", "919315702804")
+PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+DEFAULT_RECIPIENT = os.environ.get("TEST_RECIPIENT_PHONE", "")
 
 # 1. Try reading from .env file
 if os.path.exists(ENV_PATH):
@@ -51,6 +51,8 @@ def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
     """
     if not WHATSAPP_TOKEN:
         return {"success": False, "error": "WHATSAPP_ACCESS_TOKEN not configured in environment or .env."}
+    if not PHONE_NUMBER_ID:
+        return {"success": False, "error": "WHATSAPP_PHONE_NUMBER_ID not configured in environment or .env."}
 
     clean_phone = "".join(c for c in str(to_phone) if c.isdigit())
     if len(clean_phone) == 10:
@@ -96,6 +98,8 @@ def upload_whatsapp_media(file_bytes: bytes, mime_type: str, filename: str) -> d
     """
     if not WHATSAPP_TOKEN:
         return {"success": False, "error": "WHATSAPP_ACCESS_TOKEN not configured in environment or .env."}
+    if not PHONE_NUMBER_ID:
+        return {"success": False, "error": "WHATSAPP_PHONE_NUMBER_ID not configured in environment or .env."}
 
     boundary = '----WebKitFormBoundaryABCButtonsMedia99'
     body = bytearray()
@@ -375,17 +379,29 @@ def generate_proforma_card_image(
     buf.seek(0)
     return buf.getvalue()
 
+def get_whatsapp_media_metadata(media_id: str) -> dict:
+    """Retrieves MIME type, file size and download URL from Meta."""
+    if not WHATSAPP_TOKEN:
+        raise ValueError("WHATSAPP_ACCESS_TOKEN not configured in environment or .env.")
+    if not media_id:
+        raise ValueError("Empty media_id provided.")
+    url_info = f"https://graph.facebook.com/v22.0/{media_id}"
+    req = urllib.request.Request(url_info, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
 def download_whatsapp_media(media_id: str) -> bytes:
     """
     Downloads media bytes from Meta WhatsApp Cloud API given a media_id.
     """
-    url_info = f"https://graph.facebook.com/v22.0/{media_id}"
-    req1 = urllib.request.Request(url_info, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"})
-    with urllib.request.urlopen(req1, timeout=15) as resp1:
-        info = json.loads(resp1.read().decode("utf-8"))
-        media_url = info.get("url")
-        if not media_url:
-            raise Exception(f"No media URL returned by Meta for media_id {media_id}")
+    if not WHATSAPP_TOKEN:
+        raise ValueError("WHATSAPP_ACCESS_TOKEN not configured in environment or .env.")
+    if not media_id:
+        raise ValueError("Empty media_id provided.")
+    info = get_whatsapp_media_metadata(media_id)
+    media_url = info.get("url")
+    if not media_url:
+        raise Exception(f"No media URL returned by Meta for media_id {media_id}")
 
     req2 = urllib.request.Request(media_url, headers={
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
