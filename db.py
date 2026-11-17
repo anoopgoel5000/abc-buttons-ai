@@ -139,6 +139,18 @@ def init_db():
             ("buyer_sessions", "verified_live_stock", "INTEGER DEFAULT 0"),
             ("buyer_sessions", "waiting_for_detail", "TEXT DEFAULT ''"),
             ("buyer_sessions", "active_inquiry_id", "TEXT DEFAULT ''"),
+            ("live_inquiries", "product_category", "TEXT DEFAULT ''"),
+            ("live_inquiries", "urgency", "TEXT DEFAULT 'NORMAL'"),
+            ("live_inquiries", "sample_required", "INTEGER DEFAULT 0"),
+            ("live_inquiries", "inquiry_status", "TEXT DEFAULT 'NEW'"),
+            ("live_inquiries", "summary", "TEXT DEFAULT ''"),
+            ("live_inquiries", "next_action", "TEXT DEFAULT ''"),
+            ("buyer_sessions", "product_category", "TEXT DEFAULT ''"),
+            ("buyer_sessions", "urgency", "TEXT DEFAULT 'NORMAL'"),
+            ("buyer_sessions", "sample_required", "INTEGER DEFAULT 0"),
+            ("buyer_sessions", "inquiry_status", "TEXT DEFAULT 'NEW'"),
+            ("buyer_sessions", "summary", "TEXT DEFAULT ''"),
+            ("buyer_sessions", "next_action", "TEXT DEFAULT ''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE {col_def[0]} ADD COLUMN {col_def[1]} {col_def[2]};")
@@ -227,6 +239,12 @@ def get_session_db(phone: str) -> dict:
             d["customer_required_quantity"] = d.get("customer_required_quantity") if d.get("customer_required_quantity") is not None else d.get("quantity")
             d["catalog_available_stock"] = d.get("catalog_available_stock") or 0
             d["verified_live_stock"] = d.get("verified_live_stock") or 0
+            d["product_category"] = d.get("product_category") or ""
+            d["urgency"] = d.get("urgency") or "NORMAL"
+            d["sample_required"] = bool(d.get("sample_required"))
+            d["inquiry_status"] = d.get("inquiry_status") or "NEW"
+            d["summary"] = d.get("summary") or ""
+            d["next_action"] = d.get("next_action") or ""
             return d
             
         # Check if live_inquiries has historical data for this buyer
@@ -247,6 +265,12 @@ def get_session_db(phone: str) -> dict:
             "city": inq_row["city"] if (inq_row and "city" in inq_row.keys()) else "",
             "waiting_for_detail": None,
             "active_inquiry_id": inq_row["id"] if inq_row else None,
+            "product_category": inq_row["product_category"] if (inq_row and "product_category" in inq_row.keys()) else "",
+            "urgency": inq_row["urgency"] if (inq_row and "urgency" in inq_row.keys()) else "NORMAL",
+            "sample_required": bool(inq_row and "sample_required" in inq_row.keys() and inq_row["sample_required"]),
+            "inquiry_status": inq_row["inquiry_status"] if (inq_row and "inquiry_status" in inq_row.keys()) else "NEW",
+            "summary": inq_row["summary"] if (inq_row and "summary" in inq_row.keys()) else "",
+            "next_action": inq_row["next_action"] if (inq_row and "next_action" in inq_row.keys()) else "",
             "has_photo": bool(inq_row and (inq_row["photo_b64"] or inq_row["matched_sku"])),
             "has_address": False,
             "history_count": 0,
@@ -262,13 +286,16 @@ def get_session_db(phone: str) -> dict:
         
         cur.execute("""
             INSERT INTO buyer_sessions 
-            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, human_takeover, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, human_takeover, company, city, waiting_for_detail, active_inquiry_id, product_category, urgency, sample_required, inquiry_status, summary, next_action, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             key, init_sess["contact_name"], init_sess["matched_sku"], init_sess["matched_name"],
             init_sess["matched_size"], init_sess["quantity"], int(init_sess["has_photo"]),
             0, 0, init_sess["last_active_sku"], 0, 0, "[]", 0, 0,
-            init_sess["customer_required_quantity"] or 0, init_sess["catalog_available_stock"] or 0, init_sess["verified_live_stock"] or 0, 0, now_str
+            init_sess["customer_required_quantity"] or 0, init_sess["catalog_available_stock"] or 0, init_sess["verified_live_stock"] or 0, 0,
+            init_sess["company"], init_sess["city"], init_sess["waiting_for_detail"], init_sess["active_inquiry_id"],
+            init_sess["product_category"], init_sess["urgency"], 1 if init_sess["sample_required"] else 0,
+            init_sess["inquiry_status"], init_sess["summary"], init_sess["next_action"], now_str
         ))
         return init_sess
 
@@ -297,8 +324,8 @@ def save_session_db(phone: str, session: dict):
 
         conn.execute("""
             INSERT INTO buyer_sessions
-            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, human_takeover, company, city, waiting_for_detail, active_inquiry_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (phone, contact_name, matched_sku, matched_name, matched_size, quantity, has_photo, has_address, history_count, last_active_sku, waiting_for_similar_permission, waiting_for_similar_approval, suggested_alternatives, waiting_for_custom_mfg_qty, courtesy_count, customer_required_quantity, catalog_available_stock, verified_live_stock, human_takeover, company, city, waiting_for_detail, active_inquiry_id, product_category, urgency, sample_required, inquiry_status, summary, next_action, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(phone) DO UPDATE SET
                 contact_name = excluded.contact_name,
                 matched_sku = COALESCE(excluded.matched_sku, buyer_sessions.matched_sku),
@@ -322,6 +349,12 @@ def save_session_db(phone: str, session: dict):
                 city = CASE WHEN excluded.city != '' THEN excluded.city ELSE buyer_sessions.city END,
                 waiting_for_detail = excluded.waiting_for_detail,
                 active_inquiry_id = COALESCE(excluded.active_inquiry_id, buyer_sessions.active_inquiry_id),
+                product_category = CASE WHEN excluded.product_category != '' THEN excluded.product_category ELSE buyer_sessions.product_category END,
+                urgency = CASE WHEN excluded.urgency != '' THEN excluded.urgency ELSE buyer_sessions.urgency END,
+                sample_required = MAX(buyer_sessions.sample_required, excluded.sample_required),
+                inquiry_status = CASE WHEN excluded.inquiry_status != '' THEN excluded.inquiry_status ELSE buyer_sessions.inquiry_status END,
+                summary = CASE WHEN excluded.summary != '' THEN excluded.summary ELSE buyer_sessions.summary END,
+                next_action = CASE WHEN excluded.next_action != '' THEN excluded.next_action ELSE buyer_sessions.next_action END,
                 updated_at = excluded.updated_at
         """, (
             key,
@@ -347,6 +380,12 @@ def save_session_db(phone: str, session: dict):
             session.get("city", ""),
             session.get("waiting_for_detail") or "",
             session.get("active_inquiry_id", ""),
+            session.get("product_category", ""),
+            session.get("urgency", "NORMAL"),
+            1 if session.get("sample_required") else 0,
+            session.get("inquiry_status", "NEW"),
+            session.get("summary", ""),
+            session.get("next_action", ""),
             now_str
         ))
 
@@ -486,7 +525,7 @@ def is_message_processed(msg_id: str, phone: str) -> bool:
             return True
     return False
 
-def save_inquiry_with_photo(inquiry_id: str, phone: str, buyer_name: str, photo_b64: str, notes: str = "", crm_status: str = "New Inquiry", company: str = "", city: str = "", quantity: int = 0) -> bool:
+def save_inquiry_with_photo(inquiry_id: str, phone: str, buyer_name: str, photo_b64: str, notes: str = "", crm_status: str = "New Inquiry", company: str = "", city: str = "", quantity: int = 0, product_category: str = "", urgency: str = "NORMAL", sample_required: int = 0, inquiry_status: str = "NEW", summary: str = "", next_action: str = "") -> bool:
     """Permanently links customer photo and CRM inquiry in live_inquiries."""
     if not phone:
         return False
@@ -494,7 +533,7 @@ def save_inquiry_with_photo(inquiry_id: str, phone: str, buyer_name: str, photo_
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, photo_b64, company, city, quantity FROM live_inquiries WHERE phone = ?", (key,))
+        cur.execute("SELECT id, photo_b64, company, city, quantity, product_category, urgency, sample_required, inquiry_status, summary, next_action FROM live_inquiries WHERE phone = ?", (key,))
         existing = cur.fetchone()
         if existing:
             saved_id = inquiry_id or existing["id"]
@@ -502,16 +541,22 @@ def save_inquiry_with_photo(inquiry_id: str, phone: str, buyer_name: str, photo_
             saved_company = company or (dict(existing).get("company") or "")
             saved_city = city or (dict(existing).get("city") or "")
             saved_qty = quantity or (dict(existing).get("quantity") or 0)
+            saved_cat = product_category or (dict(existing).get("product_category") or "")
+            saved_urg = urgency if urgency != "NORMAL" else (dict(existing).get("urgency") or "NORMAL")
+            saved_smp = sample_required or (dict(existing).get("sample_required") or 0)
+            saved_inq_st = inquiry_status if inquiry_status != "NEW" else (dict(existing).get("inquiry_status") or "NEW")
+            saved_sum = summary or (dict(existing).get("summary") or "")
+            saved_act = next_action or (dict(existing).get("next_action") or "")
             cur.execute("""
                 UPDATE live_inquiries
-                SET id = ?, buyer_name = ?, photo_b64 = ?, notes = ?, status = ?, company = ?, city = ?, quantity = ?, updated_at = ?
+                SET id = ?, buyer_name = ?, photo_b64 = ?, notes = ?, status = ?, company = ?, city = ?, quantity = ?, product_category = ?, urgency = ?, sample_required = ?, inquiry_status = ?, summary = ?, next_action = ?, updated_at = ?
                 WHERE phone = ?
-            """, (saved_id, buyer_name or "Buyer", saved_photo, notes or "", crm_status, saved_company, saved_city, saved_qty, now_str, key))
+            """, (saved_id, buyer_name or "Buyer", saved_photo, notes or "", crm_status, saved_company, saved_city, saved_qty, saved_cat, saved_urg, saved_smp, saved_inq_st, saved_sum, saved_act, now_str, key))
         else:
             cur.execute("""
-                INSERT INTO live_inquiries (id, phone, buyer_name, timestamp, photo_b64, status, notes, company, city, quantity, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (inquiry_id or f"inq_{key}", key, buyer_name or "Buyer", now_str, photo_b64 or "", crm_status, notes or "", company or "", city or "", quantity or 0, now_str))
+                INSERT INTO live_inquiries (id, phone, buyer_name, timestamp, photo_b64, status, notes, company, city, quantity, product_category, urgency, sample_required, inquiry_status, summary, next_action, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (inquiry_id or f"inq_{key}", key, buyer_name or "Buyer", now_str, photo_b64 or "", crm_status, notes or "", company or "", city or "", quantity or 0, product_category or "", urgency or "NORMAL", sample_required or 0, inquiry_status or "NEW", summary or "", next_action or "", now_str))
     export_to_data_store_json()
     return True
 
@@ -812,9 +857,9 @@ def load_live_inquiries_db() -> list:
         print(f"Error loading inquiries from SQLite: {e}")
         return []
 
-def update_inquiry_crm_meta(phone: str, human_takeover: int = None, assigned_salesman: str = None, crm_status: str = None, action_taken: str = None, company: str = None, city: str = None, quantity: int = None) -> tuple:
+def update_inquiry_crm_meta(phone: str, human_takeover: int = None, assigned_salesman: str = None, crm_status: str = None, action_taken: str = None, company: str = None, city: str = None, quantity: int = None, inquiry_status: str = None, product_category: str = None, urgency: str = None, sample_required: int = None, summary: str = None, next_action: str = None) -> tuple:
     """
-    Updates CRM metadata (Human Takeover, Salesperson, Deal Stage, Action Taken, Company, City, Quantity) for a specific buyer in SQLite.
+    Updates CRM metadata (Human Takeover, Salesperson, Deal Stage, Action Taken, Company, City, Quantity, Inquiry Status, Category, Urgency, Sample Req, Summary, Next Action) for a specific buyer in SQLite.
     Returns (success: bool, rows_affected: int).
     """
     key = normalize_phone(phone)
@@ -829,8 +874,8 @@ def update_inquiry_crm_meta(phone: str, human_takeover: int = None, assigned_sal
             # If no inquiry row exists yet for this customer, create an initialized entry
             cur.execute("""
                 INSERT INTO live_inquiries 
-                (id, phone, buyer_name, timestamp, matched_sku, matched_name, quantity, status, notes, chat_messages, updated_at, human_takeover, assigned_salesman, crm_status, company, city, action_taken)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, phone, buyer_name, timestamp, matched_sku, matched_name, quantity, status, notes, chat_messages, updated_at, human_takeover, assigned_salesman, crm_status, company, city, action_taken, inquiry_status, product_category, urgency, sample_required, summary, next_action)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 f"inq_{key}", key, "Customer", now_str, "Inquiry", "Button Inquiry", quantity or 0, "Chat Active", "", "[]", now_str,
                 int(human_takeover) if human_takeover is not None else 0,
@@ -838,7 +883,13 @@ def update_inquiry_crm_meta(phone: str, human_takeover: int = None, assigned_sal
                 crm_status or "New Inquiry",
                 company or "",
                 city or "",
-                action_taken or ""
+                action_taken or "",
+                inquiry_status or "NEW",
+                product_category or "",
+                urgency or "NORMAL",
+                int(sample_required) if sample_required is not None else 0,
+                summary or "",
+                next_action or ""
             ))
             total_updated = 1
         else:
@@ -866,6 +917,31 @@ def update_inquiry_crm_meta(phone: str, human_takeover: int = None, assigned_sal
             if quantity is not None:
                 cur.execute("UPDATE live_inquiries SET quantity = ?, updated_at = ? WHERE phone = ?", (int(quantity), now_str, key))
                 total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET quantity = ?, customer_required_quantity = ?, updated_at = ? WHERE phone = ?", (int(quantity), int(quantity), now_str, key))
+            if inquiry_status is not None:
+                cur.execute("UPDATE live_inquiries SET inquiry_status = ?, updated_at = ? WHERE phone = ?", (inquiry_status, now_str, key))
+                total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET inquiry_status = ?, updated_at = ? WHERE phone = ?", (inquiry_status, now_str, key))
+            if product_category is not None:
+                cur.execute("UPDATE live_inquiries SET product_category = ?, updated_at = ? WHERE phone = ?", (product_category, now_str, key))
+                total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET product_category = ?, updated_at = ? WHERE phone = ?", (product_category, now_str, key))
+            if urgency is not None:
+                cur.execute("UPDATE live_inquiries SET urgency = ?, updated_at = ? WHERE phone = ?", (urgency, now_str, key))
+                total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET urgency = ?, updated_at = ? WHERE phone = ?", (urgency, now_str, key))
+            if sample_required is not None:
+                cur.execute("UPDATE live_inquiries SET sample_required = ?, updated_at = ? WHERE phone = ?", (int(sample_required), now_str, key))
+                total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET sample_required = ?, updated_at = ? WHERE phone = ?", (int(sample_required), now_str, key))
+            if summary is not None:
+                cur.execute("UPDATE live_inquiries SET summary = ?, updated_at = ? WHERE phone = ?", (summary, now_str, key))
+                total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET summary = ?, updated_at = ? WHERE phone = ?", (summary, now_str, key))
+            if next_action is not None:
+                cur.execute("UPDATE live_inquiries SET next_action = ?, updated_at = ? WHERE phone = ?", (next_action, now_str, key))
+                total_updated = max(total_updated, cur.rowcount)
+                conn.execute("UPDATE buyer_sessions SET next_action = ?, updated_at = ? WHERE phone = ?", (next_action, now_str, key))
                 
     export_to_data_store_json()
     return True, total_updated

@@ -974,22 +974,38 @@ with tabs[0]:
                 active_inq = inqs[sel_idx]
                 
                 # Details Panel
+                act_status = active_inq.get('inquiry_status') or 'READY_FOR_SALES'
+                act_urgency = active_inq.get('urgency') or 'NORMAL'
+                act_cat = active_inq.get('product_category') or ''
+                act_summ = active_inq.get('summary') or ''
+                act_next = active_inq.get('next_action') or ''
+                
+                status_color = "#15803D" if act_status == "READY_FOR_SALES" else ("#B45309" if act_status == "COLLECTING_DETAILS" else "#0369A1")
+                status_bg = "#DCFCE7" if act_status == "READY_FOR_SALES" else ("#FEF3C7" if act_status == "COLLECTING_DETAILS" else "#E0F2FE")
+                urgency_badge_html = "<span style='background: #FEE2E2; color: #991B1B; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 6px; border: 1px solid #FCA5A5; margin-left: 6px;'>🚨 URGENT</span>" if act_urgency == "URGENT" else ""
+
                 st.markdown(f"""
                 <div style="background: #FFFFFF; border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-weight: 800; font-size: 16px; color: #0F172A;">{active_inq.get('buyer_name', 'Customer')}</span>
+                        <div>
+                            <span style="font-weight: 800; font-size: 16px; color: #0F172A;">{active_inq.get('buyer_name', 'Customer')}</span>
+                            <span style="background: {status_bg}; color: {status_color}; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; margin-left: 6px;">📌 {act_status}</span>
+                            {urgency_badge_html}
+                        </div>
                         <span style="background: #DCFCE7; color: #166534; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px;">🟢 Live Auto-Sync (4s)</span>
                     </div>
                     <div style="font-size: 13px; color: #475569; margin-bottom: 6px;">
                         <b>Phone:</b> <span style="font-family: monospace;">+{active_inq.get('phone', '')}</span> &nbsp;|&nbsp; <b>Time:</b> {active_inq.get('timestamp', 'Today')}
                     </div>
                     <div style="font-size: 13px; color: #475569; margin-bottom: 6px;">
-                        <b>Matched SKU:</b> <span style="color: #0284C7; font-weight: 700;">{active_inq.get('matched_sku', 'Inquiry')}</span> ({active_inq.get('matched_name', '')}) {f"- Size: <b>{active_inq.get('matched_size')}</b>" if active_inq.get('matched_size') else ""}
+                        <b>Category/SKU:</b> <span style="color: #0284C7; font-weight: 700;">{act_cat or active_inq.get('matched_sku', 'Inquiry')}</span> {f"({active_inq.get('matched_name', '')})" if active_inq.get('matched_name') else ""} {f"- Size: <b>{active_inq.get('matched_size')}</b>" if active_inq.get('matched_size') else ""}
                     </div>
-                    <div style="display: flex; gap: 14px; font-size: 13px; color: #475569;">
+                    <div style="display: flex; gap: 14px; font-size: 13px; color: #475569; margin-bottom: 6px;">
                         <div><b>Customer Requirement:</b> <span style="color: #16A34A; font-weight: 700;">{active_inq.get('customer_required_quantity') or active_inq.get('quantity') or 0:,} Gross</span></div>
                         <div><b>Catalog Stock:</b> <span style="color: #0284C7; font-weight: 700;">{active_inq.get('catalog_available_stock') or 0:,} Gross</span></div>
                     </div>
+                    {f'<div style="font-size: 12px; color: #1E293B; background: #F8FAFC; padding: 6px 10px; border-radius: 6px; border: 1px solid #E2E8F0; margin-top: 6px;"><b>📋 AI Summary:</b> {html.escape(act_summ)}</div>' if act_summ else ''}
+                    {f'<div style="font-size: 12px; color: #9A3412; background: #FFF7ED; padding: 6px 10px; border-radius: 6px; border: 1px solid #FFEDD5; margin-top: 4px;"><b>👉 Next Action:</b> {html.escape(act_next)}</div>' if act_next else ''}
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -1302,19 +1318,34 @@ with tabs[0]:
                     
                     qty_val = inq.get('customer_required_quantity') or inq.get('quantity', 0)
                     cat_stock_val = inq.get('catalog_available_stock', 0)
+                    card_status = inq.get('inquiry_status') or inq.get('status') or 'READY_FOR_SALES'
+                    card_urgency = inq.get('urgency') or 'NORMAL'
+                    card_cat = inq.get('product_category') or ''
+                    card_summary = inq.get('summary') or ''
+                    card_next = inq.get('next_action') or ''
+
                     if qty_val:
                         qty_badge = f"""<span style="background: #DCFCE7; color: #15803D; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; border: 1.5px solid #86EFAC;">📦 Required: {qty_val:,} Gross ({qty_val*144:,} Pcs)</span>"""
                     else:
                         qty_badge = """<span style="background: #FEF3C7; color: #B45309; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 700; border: 1.5px solid #FDE68A;">⏳ Awaiting Quantity Confirmation</span>"""
                     
                     stock_badge = f"""<span style="background: #EFF6FF; color: #1D4ED8; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; border: 1px solid #BFDBFE; margin-left: 6px;">🏭 Reference Stock: {cat_stock_val:,} Gross</span>""" if cat_stock_val else ""
+                    urg_badge = """<span style="background: #FEE2E2; color: #991B1B; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 800; border: 1px solid #FCA5A5; margin-left: 6px;">🚨 URGENT</span>""" if card_urgency == "URGENT" else ""
+                    cat_badge = f"""<span style="background: #F3E8FF; color: #6B21A8; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; border: 1px solid #D8B4FE; margin-left: 6px;">🏷️ {card_cat}</span>""" if card_cat else ""
                     
+                    st_bg = "#DCFCE7" if card_status == "READY_FOR_SALES" else ("#FEF3C7" if card_status == "COLLECTING_DETAILS" else "#F1F5F9")
+                    st_col = "#15803D" if card_status == "READY_FOR_SALES" else ("#B45309" if card_status == "COLLECTING_DETAILS" else "#475569")
+
                     st.markdown(f"""
                     <div style="margin-top: 8px;">
                         {qty_badge}
                         {stock_badge}
-                        <span style="background: #F1F5F9; color: #475569; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 8px;">Status: {inq.get('crm_status') or inq.get('status', 'New Inquiry')}</span>
+                        {urg_badge}
+                        {cat_badge}
+                        <span style="background: {st_bg}; color: {st_col}; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-left: 8px; border: 1px solid rgba(0,0,0,0.08);">📌 {card_status}</span>
                     </div>
+                    {f'<div style="font-size: 12px; color: #1E293B; background: #F8FAFC; padding: 6px 10px; border-radius: 6px; border: 1px solid #E2E8F0; margin-top: 6px;"><b>📋 AI Summary:</b> {html.escape(card_summary)}</div>' if card_summary else ''}
+                    {f'<div style="font-size: 12px; color: #9A3412; background: #FFF7ED; padding: 6px 10px; border-radius: 6px; border: 1px solid #FFEDD5; margin-top: 4px;"><b>👉 Next Action:</b> {html.escape(card_next)}</div>' if card_next else ''}
                     """, unsafe_allow_html=True)
                     
                 with c_card3:

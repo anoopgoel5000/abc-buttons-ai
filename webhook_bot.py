@@ -259,6 +259,90 @@ def classify_buyer_intent(raw_text: str, session: dict, active_sku: str = None) 
         
     return "GENERAL_TEXT", {}
 
+def extract_buyer_slots(text: str, session: dict = None) -> dict:
+    """Intelligently extracts conversational slots for commercial sales qualification."""
+    sess = session or {}
+    lower = text.lower().strip()
+    slots = {}
+
+    # 1. AI Identity Query
+    if re.search(r'\b(?:are you|aap)\s+(?:a\s+)?(?:bot|ai|robot)\b|\b(?:ai|bot|robot)\s+ho\b|\b(?:human|insaan)\s+ho\b|\bwho are you\b', lower):
+        slots["is_identity_query"] = True
+
+    # 2. Price Query
+    if any(w in lower for w in ["rate kya", "price kya", "rate batao", "price batao", "kitne ka", "what is the price", "what is the rate", "cost kya", "per gross rate", "bhaav", "quotation chahiye", "quote bhejo", "price please", "rate please"]):
+        slots["is_price_query"] = True
+
+    # 3. Stock Query
+    if any(w in lower for w in ["ready stock", "stock hai", "stock available", "godown me", "godown mein", "available hai kya", "stock me hai", "in stock"]) and not any(w in lower for w in ["aapne bola", "aapne kaha", "you mentioned"]):
+        slots["is_stock_query"] = True
+
+    # 4. Similar Samples Request
+    if any(w in lower for w in ["similar sample", "milte julte", "similar button", "options dikhao", "swatch card", "sample card", "sample chahiye", "cutting sample", "similar options"]):
+        slots["is_sample_request"] = True
+
+    # 5. Custom Manufacturing
+    if any(w in lower for w in ["custom banwana", "custom manufacture", "apna logo", "logo engraving", "custom design", "custom button", "custom dyeing", "dtm"]):
+        slots["is_custom_mfg"] = True
+
+    # 6. Urgency
+    if any(w in lower for w in ["urgent", "urgently", "jaldi chahiye", "emergency", "asap", "immediate", "kal tak"]):
+        slots["urgency"] = "URGENT"
+
+    # 7. Quantity & Correction
+    is_corr_phrase = any(k in lower for k in ["ki jagah", "badal", "change", "update", "kar do", "kar dena", "karo"]) or (lower.startswith("nahi") and any(ch.isdigit() for ch in lower))
+    nums = re.findall(r'\b(\d+)\b', lower)
+    if is_corr_phrase and sess.get("quantity") and nums:
+        slots["is_qty_correction"] = True
+        slots["quantity"] = int(nums[-1])
+    else:
+        m_gross = re.search(r'\b(\d+)\s*(?:gross|gr|gros)\b', lower)
+        if m_gross:
+            slots["quantity"] = int(m_gross.group(1))
+            slots["is_qty_correction"] = False
+        else:
+            m_pcs = re.search(r'\b(\d+)\s*(?:pcs|pieces)\b', lower)
+            if m_pcs:
+                slots["quantity"] = max(1, round(int(m_pcs.group(1)) / 144))
+                slots["is_qty_correction"] = False
+            elif sess.get("waiting_for_detail") == "quantity" and nums:
+                slots["quantity"] = int(nums[0])
+                slots["is_qty_correction"] = False
+
+    # 8. Category extraction
+    cat_map = [
+        (["agoya", "agora", "shirt pearl"], "Agoya Shell Button"),
+        (["river shell", "river", "white river"], "River Shell Button"),
+        (["trocas", "gunmetal"], "Trocas Shell Button"),
+        (["mop", "mother of pearl", "caramel gold"], "MOP Shell Button"),
+        (["polyester", "faux mop", "chalk", "resin"], "Polyester Button"),
+        (["horn", "buffalo horn"], "Horn Button"),
+        (["corozo", "tagua"], "Corozo Button"),
+        (["coconut", "nariyal"], "Coconut Shell Button"),
+        (["wood", "wooden"], "Wooden Button"),
+        (["metal", "shank", "blazer"], "Metal Shank Button")
+    ]
+    for kws, cat_name in cat_map:
+        if any(k in lower for k in kws):
+            slots["product_category"] = cat_name
+            break
+
+    # 9. Size extraction
+    sz_m = re.search(r'\b(\d{1,2})\s*[lL]\b', text)
+    if sz_m:
+        slots["size"] = f"{sz_m.group(1)}L"
+
+    # 10. Multi-slot all-in-one check (e.g. "Hum Apex Fashions Surat se hain, 300 gross River Shell 18L chahiye urgent")
+    m_allinone = re.search(r'(?:hum\s+)?([A-Za-z0-9\s]+?)\s+(?:from\s+|in\s+)?(Surat|Delhi|Mumbai|Ahmedabad|Jaipur|Bangalore|Kolkata|Noida|Gurgaon|Tirupur|Ludhiana|Chennai|Kanpur|Indore)\b', text, re.IGNORECASE)
+    if m_allinone and not slots.get("is_qty_correction"):
+        comp = re.sub(r'^(?:hum|we\s+are|hamara|from)\s+', '', m_allinone.group(1).strip(), flags=re.IGNORECASE).strip()
+        cit = m_allinone.group(2).strip().title()
+        if len(comp) >= 2 and not any(w in comp.lower() for w in ["gross", "button", "nahi"]):
+            slots["company"] = comp
+            slots["city"] = cit
+
+    return slots
+
 async def process_incoming_whatsapp_message(value: dict):
     """
     Stateful Customer Context Aware WhatsApp Message Handler.
@@ -369,11 +453,12 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
                 buyer_name=contact_name,
                 photo_b64="",
                 notes=f"[Download Failed] {caption or 'Buyer photo sample'} - Error: {download_err}",
-                crm_status="Image Download Failed - Needs Human Review"
+                crm_status="Image Download Failed - Needs Human Review",
+                inquiry_status="PHOTO_DOWNLOAD_FAILED"
             )
             fallback_text = (
-                f"Ji {salutation}, aapka photo sample prapt hua hai, lekin network connectivity ke kaaran image download verify nahi ho paayi hai. "
-                f"Hamari sales team ko aapki inquiry alert kar di gayi hai, hum turant aapse sampark karenge."
+                f"Ji {salutation}, network connectivity ke kaaran button photo download nahi ho paayi. "
+                f"Kripya photo dobara bhej dijiye taaki Sales Team ise verify kar sake."
             )
             send_whatsapp_text(from_phone, fallback_text, contact_name)
             db.update_inbound_message_status(msg_id, "FAILED", f"Media download failed: {download_err}")
@@ -490,12 +575,15 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
         if not has_qty:
             ack_msg += "\n\n👉 Aapko is button ki lagbhag kitni quantity (Gross me) required hogi?"
             session["waiting_for_detail"] = "quantity"
+            session["inquiry_status"] = "COLLECTING_DETAILS"
         elif not has_company or not has_city:
             ack_msg += "\n\n👉 Kripya apni Company / Firm ka naam aur City share kar dijiye taaki formal estimate taiyaar kiya ja sake."
             session["waiting_for_detail"] = "company_city"
+            session["inquiry_status"] = "COLLECTING_DETAILS"
         else:
             ack_msg += f"\n\n✅ Details on Record: {session.get('quantity')} Gross | {session.get('company')}, {session.get('city')}."
             session["waiting_for_detail"] = None
+            session["inquiry_status"] = "READY_FOR_SALES"
 
         # 8. Save the inquiry persistently BEFORE claiming it was forwarded
         full_notes = f"{caption or 'Buyer button sample'} | Internal CV: {internal_cv_notes}"
@@ -508,7 +596,12 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
             crm_status="New Inquiry - Pending Sales Assignment",
             company=session.get("company", ""),
             city=session.get("city", ""),
-            quantity=session.get("quantity") or 0
+            quantity=session.get("quantity") or 0,
+            product_category=mat_det + " Button",
+            urgency=session.get("urgency", "NORMAL"),
+            inquiry_status=session.get("inquiry_status", "COLLECTING_DETAILS"),
+            summary=f"Inquiry {inquiry_id} for {mat_det} button ({session.get('quantity') or 'Qty TBD'} Gross) - {session.get('company') or 'Customer'}",
+            next_action="Collect missing details" if session.get("inquiry_status") == "COLLECTING_DETAILS" else "Warehouse stock check"
         )
 
         inq_entry = {
@@ -552,6 +645,245 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
         log_chat_event(from_phone, contact_name, "buyer", "text", text_body)
 
         # ---------------- STEP 0: CONVERSATIONAL MISSING DETAILS HANDLER ----------------
+        slots = extract_buyer_slots(text_body, session)
+
+        # 0.1 AI IDENTITY TRANSPARENCY QUERY
+        if slots.get("is_identity_query"):
+            ident_reply = (
+                f"Ji bilkul {salutation}, main ABC Buttons ka 24×7 AI Sales Assistant hoon. "
+                f"Meri zimmedari aapki button requirements note karke hamari Sales Team ko connect karwana hai, "
+                f"taaki aapko accurate stock availability aur best wholesale pricing mil sake.\n\n"
+                f"Batayein sir, aaj aapko kis type ke buttons ki requirement hai?"
+            )
+            send_whatsapp_text(from_phone, ident_reply, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.2 IMMEDIATE PRICE INQUIRY HANDLING (Respectful Deferral to Sales Team)
+        if slots.get("is_price_query") and not session.get("waiting_for_similar_approval") and not session.get("waiting_for_custom_mfg_qty"):
+            session["inquiry_status"] = "QUOTATION_PENDING"
+            has_qty = bool(session.get("quantity") and int(session.get("quantity") or 0) > 0)
+            has_comp = bool(session.get("company"))
+            has_city = bool(session.get("city"))
+            
+            price_deferral = (
+                f"Ji bilkul {salutation}! ABC Buttons par hum wholesale volume pricing offer karte hain, "
+                f"jo button ke material, size (Ligne) aur required quantity (Gross) par depend karti hai.\n\n"
+                f"Hamare Sales Team physically sample verify karke sabse competitive best wholesale quote aapse share karenge."
+            )
+            if not session.get("has_photo") and not session.get("matched_sku"):
+                price_deferral += "\n\n👉 Kya aapke paas sample button ki photo hai, ya aap required button ka naam share kar sakte hain?"
+            elif not has_qty:
+                price_deferral += "\n\n👉 Aapko is design mein lagbhag kitni Quantity (Gross mein) chahiye hogi?"
+                session["waiting_for_detail"] = "quantity"
+            elif not has_comp or not has_city:
+                price_deferral += "\n\n👉 Kripya apni Company / Firm ka naam aur City bata dijiye taaki formal quote taiyaar kiya ja sake."
+                session["waiting_for_detail"] = "company_city"
+            else:
+                price_deferral += f"\n\n📋 Inquiry ID: {session.get('active_inquiry_id') or 'INQ-PENDING'}\nSales Team aapse jald hi official quotation ke sath sampark karegi."
+            
+            send_whatsapp_text(from_phone, price_deferral, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.3 READY STOCK INQUIRY (Physical Godown Check Deferral)
+        if slots.get("is_stock_query") and not session.get("waiting_for_similar_approval") and not session.get("waiting_for_custom_mfg_qty"):
+            session["inquiry_status"] = "STOCK_CHECK_PENDING"
+            has_qty = bool(session.get("quantity") and int(session.get("quantity") or 0) > 0)
+            has_comp = bool(session.get("company"))
+            
+            stock_deferral = (
+                f"Ji {salutation}, Central Godown (New Delhi) mein daily stock dispatch hota rehta hai, "
+                f"isliye hamari Sales Team physically warehouse stock verify karke aapko accurate ready quantity confirm karegi."
+            )
+            if not session.get("has_photo") and not session.get("matched_sku"):
+                stock_deferral += "\n\n👉 Aapko kis design ya material ke buttons ka stock check karwana hai? Sample photo yahan share kar dijiye."
+            elif not has_qty:
+                stock_deferral += "\n\n👉 Aapko lagbhag kitni quantity (Gross mein) ki zaroorat rahegi?"
+                session["waiting_for_detail"] = "quantity"
+            elif not has_comp:
+                stock_deferral += "\n\n👉 Kripya apni Company aur City ka naam share kar dijiye."
+                session["waiting_for_detail"] = "company_city"
+            else:
+                stock_deferral += f"\n\n📋 Inquiry ID: {session.get('active_inquiry_id') or 'INQ-PENDING'}\nSales Team live stock check karke aapko WhatsApp par update karegi."
+
+            send_whatsapp_text(from_phone, stock_deferral, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.4 SIMILAR SAMPLES / SWATCH CARD REQUEST
+        if slots.get("is_sample_request"):
+            session["sample_required"] = 1
+            session["inquiry_status"] = "SAMPLE_REVIEW"
+            sample_reply = (
+                f"Ji bilkul {salutation}, hamari Sales Team ke paas is design ke physical samples, running shade cards aur digital swatches uplabdh hain.\n\n"
+                f"Humne sample request Sales Team ko mark kar di hai. Team aapse sample coordination aur dispatch ke liye sampark karegi."
+            )
+            if not session.get("company") or not session.get("city"):
+                sample_reply += "\n\n👉 Kripya apna delivery City / Company details bata dijiye taaki sample dispatch plan kiya ja sake."
+                session["waiting_for_detail"] = "company_city"
+            send_whatsapp_text(from_phone, sample_reply, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.5 CUSTOM MANUFACTURING REQUEST
+        if slots.get("is_custom_mfg") and not session.get("waiting_for_custom_mfg_qty"):
+            session["inquiry_status"] = "SAMPLE_REVIEW"
+            custom_reply = (
+                f"Ji bilkul {salutation}! Hum custom button manufacturing, brand logo laser engraving aur custom dyeing (DTM) karte hain.\n\n"
+                f"• Minimum Order Quantity (MOQ): Samanyatah 500 Gross rehti hai.\n"
+                f"• Production Lead Time: 7-10 working days.\n\n"
+                f"Sales Team aapke design ki factory feasibility confirm karegi. Aapko lagbhag kitni quantity required hogi?"
+            )
+            session["waiting_for_custom_mfg_qty"] = True
+            send_whatsapp_text(from_phone, custom_reply, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.6 DYNAMIC QUANTITY CORRECTION & ACKNOWLEDGEMENT
+        if slots.get("is_qty_correction") and slots.get("quantity"):
+            old_qty = session.get("quantity")
+            new_qty = slots["quantity"]
+            session["quantity"] = new_qty
+            session["customer_required_quantity"] = new_qty
+            
+            with db.get_db_connection() as conn:
+                conn.execute("UPDATE live_inquiries SET quantity = ? WHERE phone = ?", (new_qty, db.normalize_phone(from_phone)))
+            for item in live_whatsapp_inquiries:
+                if item.get("phone") == from_phone:
+                    item["quantity"] = new_qty
+                    break
+            save_live_inquiries()
+
+            has_comp = bool(session.get("company"))
+            has_city = bool(session.get("city"))
+            
+            corr_ack = f"Samajh gaya ji! {f'{old_qty} Gross ke bajaye ' if old_qty and old_qty != new_qty else ''}*{new_qty:,} Gross* update kar diya gaya hai."
+            if not has_comp or not has_city:
+                corr_ack += "\n\n👉 Kripya apni Company / Firm ka naam aur City bata dijiye taaki formal quote taiyaar kiya ja sake."
+                session["waiting_for_detail"] = "company_city"
+            else:
+                corr_ack += f"\n\nUpdated requirement (*{new_qty:,} Gross* | {session.get('company')}, {session.get('city')}) Sales Team ko notify kar di gayi hai."
+                session["waiting_for_detail"] = None
+                session["inquiry_status"] = "READY_FOR_SALES"
+
+            send_whatsapp_text(from_phone, corr_ack, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.7 MULTI-SLOT ALL-IN-ONE MESSAGE EXTRACTION
+        if slots.get("company") and slots.get("city") and slots.get("quantity"):
+            extracted_comp = slots["company"]
+            extracted_city = slots["city"]
+            extracted_qty = slots["quantity"]
+            
+            session["company"] = extracted_comp
+            session["city"] = extracted_city
+            session["quantity"] = extracted_qty
+            session["customer_required_quantity"] = extracted_qty
+            session["waiting_for_detail"] = None
+            if slots.get("urgency"):
+                session["urgency"] = slots["urgency"]
+            if slots.get("product_category"):
+                session["product_category"] = slots["product_category"]
+            if slots.get("size"):
+                session["matched_size"] = slots["size"]
+
+            import datetime, random
+            utc_now = datetime.datetime.now(datetime.timezone.utc)
+            ist_now = utc_now + datetime.timedelta(hours=5, minutes=30)
+            inq_id_prefix = f"INQ-{ist_now.strftime('%Y%m%d')}"
+            active_inq_id = session.get("active_inquiry_id")
+            if not active_inq_id or not str(active_inq_id).startswith(inq_id_prefix):
+                inquiry_id = f"{inq_id_prefix}-{random.randint(1000, 9999)}"
+                session["active_inquiry_id"] = inquiry_id
+            else:
+                inquiry_id = active_inq_id
+
+            session["inquiry_status"] = "READY_FOR_SALES"
+            summary_txt = f"{extracted_comp} ({extracted_city}) - {extracted_qty} Gross {session.get('product_category', 'Buttons')}"
+            session["summary"] = summary_txt
+            session["next_action"] = "Physically check warehouse godown stock & quote"
+
+            db.save_inquiry_with_photo(
+                inquiry_id=inquiry_id,
+                phone=from_phone,
+                buyer_name=contact_name,
+                photo_b64="",
+                notes=f"All-in-one inquiry: {text_body}",
+                crm_status="Ready for Sales - Details Complete",
+                company=extracted_comp,
+                city=extracted_city,
+                quantity=extracted_qty,
+                product_category=session.get("product_category", ""),
+                urgency=session.get("urgency", "NORMAL"),
+                inquiry_status="READY_FOR_SALES",
+                summary=summary_txt,
+                next_action=session.get("next_action", "")
+            )
+
+            size_txt = f" ({session.get('matched_size')})" if session.get('matched_size') else ""
+            cat_txt = session.get('product_category', 'Buttons')
+            all_reply = (
+                f"Ji bohot dhanyawad {salutation}! Aapki complete requirement note kar li gayi hai:\n\n"
+                f"📋 *Inquiry ID: {inquiry_id}*\n"
+                f"• Company: {extracted_comp}, {extracted_city}\n"
+                f"• Item: {cat_txt}{size_txt} — *{extracted_qty:,} Gross*\n"
+                f"• Priority: {session.get('urgency', 'NORMAL')}\n\n"
+                f"Hamari Sales Team priority par warehouse stock verify karke jald hi aapse official quotation ke sath sampark karegi."
+            )
+            send_whatsapp_text(from_phone, all_reply, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.8 CATEGORY INQUIRY (e.g. "Agoya buttons", "River shell buttons")
+        if not session.get("has_photo") and not session.get("quantity") and slots.get("product_category") and not any(w in lower_text for w in ["gross", "order", "dhanyawad", "ok"]):
+            cat_name = slots["product_category"]
+            session["product_category"] = cat_name
+            sku_map = {
+                "Agoya Shell Button": "ABC-136",
+                "River Shell Button": "ABC-139",
+                "Trocas Shell Button": "ABC-141",
+                "MOP Shell Button": "ABC-137",
+                "Polyester Button": "ABC-POLY-18L-10",
+                "Horn Button": "ABC-HRN-24L-06"
+            }
+            if cat_name in sku_map and not session.get("matched_sku"):
+                session["matched_sku"] = sku_map[cat_name]
+                session["matched_name"] = cat_name
+                session["last_active_sku"] = sku_map[cat_name]
+
+            cat_prompt = (
+                f"Ji bilkul {salutation}, {cat_name}s hamara regular running category hai.\n\n"
+                f"👉 Kya aapke paas required button ka sample photo hai? Aap photo yahan share kar sakte hain, "
+                f"ya agar aapko specific size (jaise 14L ya 18L) mein requirement hai toh batayein."
+            )
+            send_whatsapp_text(from_phone, cat_prompt, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
+        # 0.9 WARM INITIAL GREETING AS 24x7 AI SALES ASSISTANT
+        is_greeting = lower_text in ["hi", "hello", "namaste", "hey", "hlo", "hi sir", "hello sir", "namaskar"]
+        if is_greeting and not session.get("has_photo") and not session.get("quantity") and session.get("history_count", 0) <= 1:
+            welcome_msg = (
+                f"Namaste {salutation}! ABC Buttons mein aapka swagat hai. Main ABC Buttons ka 24×7 AI Sales Assistant hoon.\n\n"
+                f"Garments ke liye kisi bhi type ke buttons (Agoya, River Shell, Trocas, MOP, Polyester, Horn) chahiye hon, "
+                f"toh aap button ki photo ya requirements yahan share kar sakte hain.\n\n"
+                f"Batayein sir, aaj aapko kis type ke buttons ki requirement hai?"
+            )
+            send_whatsapp_text(from_phone, welcome_msg, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
+
         # 1. Missing Quantity Handler (When bot prompted for missing quantity on sample intake)
         is_qty_reply = (session.get("waiting_for_detail") == "quantity" and bool(re.search(r'\b\d+\b', lower_text)))
         if is_qty_reply and not session.get("waiting_for_similar_approval") and not session.get("waiting_for_custom_mfg_qty") and not any(w in lower_text for w in ["ki jagah", "badal", "replace"]):
@@ -578,6 +910,12 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
                     )
                 else:
                     session["waiting_for_detail"] = None
+                    session["inquiry_status"] = "READY_FOR_SALES"
+                    summary_txt = f"Inquiry for {session.get('company')} ({session.get('city')}) - {qty_val} Gross"
+                    session["summary"] = summary_txt
+                    session["next_action"] = "Physically check warehouse godown stock & quote"
+                    with db.get_db_connection() as conn:
+                        conn.execute("UPDATE live_inquiries SET inquiry_status = 'READY_FOR_SALES', summary = ?, next_action = ? WHERE phone = ?", (summary_txt, session["next_action"], db.normalize_phone(from_phone)))
                     reply = (
                         f"Ji dhanyawad {salutation}! Aapki requirement (*{qty_val:,} Gross* | {session.get('company')}, {session.get('city')}) record ho chuki hai.\n\n"
                         f"Hamare sales executive physically warehouse stock verify karke jald hi aapse sampark karenge."
@@ -596,13 +934,18 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
             if city_str:
                 session["city"] = city_str
             session["waiting_for_detail"] = None
+            session["inquiry_status"] = "READY_FOR_SALES"
+            summary_txt = f"Inquiry for {company_str} ({city_str}) - {session.get('quantity') or 'Qty TBD'} Gross"
+            session["summary"] = summary_txt
+            session["next_action"] = "Physically check warehouse godown stock & quote"
 
             with db.get_db_connection() as conn:
-                conn.execute("UPDATE live_inquiries SET company = ?, city = ? WHERE phone = ?", (company_str, city_str, db.normalize_phone(from_phone)))
+                conn.execute("UPDATE live_inquiries SET company = ?, city = ?, inquiry_status = 'READY_FOR_SALES', summary = ?, next_action = ? WHERE phone = ?", (company_str, city_str, summary_txt, session["next_action"], db.normalize_phone(from_phone)))
             for item in live_whatsapp_inquiries:
                 if item.get("phone") == from_phone:
                     item["company"] = company_str
                     item["city"] = city_str
+                    item["inquiry_status"] = "READY_FOR_SALES"
                     break
             save_live_inquiries()
 
@@ -1143,25 +1486,10 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
             session["has_photo"] = True
             session["last_active_sku"] = item["sku"]
             
-            # If quantity is not yet mentioned in this message, send exact stock details & ask for quantity
+            # If quantity is not yet mentioned in this message, send conversational inquiry (NO catalog images auto-sent)
             if not has_qty_in_msg:
-                p_img_path = os.path.join(CAT_DIR, f"{item['sku']}.jpg")
-                if os.path.exists(p_img_path):
-                    with open(p_img_path, "rb") as fp:
-                        p_img_bytes = fp.read()
-                    best_caption = (
-                        f"🏆 *Ready Stock Available: {item['name']}*\n"
-                        f"• SKU: {item['sku']} • Size: {item.get('size_ligne', '')} • {item.get('holes', '')}\n"
-                        f"• Ready Godown Stock: *{item.get('stock_gross', 0):,} Gross* ({item.get('stock_gross', 0)*144:,} Pcs)\n"
-                        f"• Standard Rate: *₹{item.get('rate_per_gross', 0)} / Gross*\n\n"
-                        f"100% genuine export quality stock Central Godown, New Delhi me available hai."
-                    )
-                    send_whatsapp_image(from_phone, p_img_bytes, best_caption, sku=item['sku'], product_name=item['name'], size_opts=item.get('size_ligne', ''))
-                    log_chat_event(from_phone, contact_name, "bot", "image", best_caption, sku=item['sku'])
-                    await asyncio.sleep(1.2)
-                    
                 reply_text = (
-                    f"Ji {salutation}, hamare paas {item['name']} ready godown stock me available hai ({item.get('stock_gross', 0):,} Gross stock).\n\n"
+                    f"Ji {salutation}, {item['name']} hamara running catalog item hai.\n\n"
                     f"Aapko kis size me aur lagbhag kitni quantity (Gross) me requirement hai?"
                 )
                 send_whatsapp_text(from_phone, reply_text)
