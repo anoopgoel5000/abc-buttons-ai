@@ -410,12 +410,110 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
         best_sku = res.get("best_match_sku")
         print(f"🔍 AI Result: Status={status} | SKU={best_sku}")
 
-        # Permanently record customer inquiry with real photo in live CRM feed
+        # ---------------- SIMPLIFIED 24x7 SALES INTAKE & HANDOFF FLOW ----------------
+        # Determine IST time and office hours (Mon-Sat 9:30 AM to 7:00 PM IST)
         import datetime
-        t_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        import random
+        utc_now = datetime.datetime.now(datetime.timezone.utc)
+        ist_now = utc_now + datetime.timedelta(hours=5, minutes=30)
+        is_sunday = (ist_now.weekday() == 6)
+        is_office_hours = (not is_sunday) and (datetime.time(9, 30) <= ist_now.time() <= datetime.time(19, 0))
+
+        # Format: INQ-YYYYMMDD-XXXX (Unique internal inquiry ID, NOT a SKU)
+        inq_id_prefix = f"INQ-{ist_now.strftime('%Y%m%d')}"
+        active_inq_id = session.get("active_inquiry_id")
+        if not active_inq_id or not str(active_inq_id).startswith(inq_id_prefix):
+            inquiry_id = f"{inq_id_prefix}-{random.randint(1000, 9999)}"
+            session["active_inquiry_id"] = inquiry_id
+        else:
+            inquiry_id = active_inq_id
+
+        # Candidate SKU reference for internal sales team notes
+        best_sku = res.get("best_match_sku")
+        session["has_photo"] = True
+        session["matched_sku"] = best_sku or "Custom / Non-Catalog"
+        session["last_active_sku"] = best_sku
+
+        # Parse quantity from caption if given
+        caption_qty = None
+        if caption:
+            qm = re.search(r'(\d+)\s*(?:gross|gr|gros|pkt|packet|bag|box)?\b', caption.lower())
+            if qm and int(qm.group(1)) > 0:
+                caption_qty = int(qm.group(1))
+
+        if caption_qty:
+            session["quantity"] = caption_qty
+        else:
+            session["quantity"] = None  # Reset requirement quantity for new sample photograph
+
+        # Reuse existing customer company & city from database if already known
+        if not session.get("company") or not session.get("city"):
+            with db.get_db_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT company, city FROM live_inquiries WHERE phone = ? LIMIT 1", (db.normalize_phone(from_phone),))
+                row = cur.fetchone()
+                if row:
+                    row_dict = dict(row)
+                    if row_dict.get("company") and not session.get("company"):
+                        session["company"] = row_dict["company"]
+                    if row_dict.get("city") and not session.get("city"):
+                        session["city"] = row_dict["city"]
+
+        # Feature Extraction for Internal Sales Notes
+        va = res.get("visual_analysis", {})
+        mat_det = va.get("material_detected", "Shell")
+        holes_det = va.get("holes_detected", "2/4 hole")
+        finish_det = va.get("finish_detected", "Gloss")
+        internal_cv_notes = f"Detected: {mat_det}, {holes_det}, {finish_det}. Reference: {best_sku or 'Custom Development'}"
+
+        # Construct truthful acknowledgement
+        if is_office_hours:
+            ack_msg = (
+                f"Ji {salutation}, aapka button sample photo humein prapt ho gaya hai.\n\n"
+                f"📋 *Inquiry ID: {inquiry_id}*\n\n"
+                f"Aapki requirement record kar li gayi hai aur hamari Sales Team ko forward kar di gayi hai. "
+                f"Hamare sales executive physically sample aur warehouse stock verify karke aapse jaldi sampark karenge."
+            )
+        else:
+            ack_msg = (
+                f"Ji {salutation}, aapka button sample photo humein prapt ho gaya hai.\n\n"
+                f"📋 *Inquiry ID: {inquiry_id}*\n\n"
+                f"Abhi hamara office closed hai (Office Timing: Mon-Sat, 9:30 AM to 7:00 PM IST). "
+                f"Aapki inquiry register kar li gayi hai. Kal subah office open hote hi hamari sales team physically stock verify karke aapse sampark karegi."
+            )
+
+        # Conversational missing details collection (One Question at a Time)
+        has_qty = bool(session.get("quantity") and int(session.get("quantity") or 0) > 0)
+        has_company = bool(session.get("company"))
+        has_city = bool(session.get("city"))
+
+        if not has_qty:
+            ack_msg += "\n\n👉 Aapko is button ki lagbhag kitni quantity (Gross me) required hogi?"
+            session["waiting_for_detail"] = "quantity"
+        elif not has_company or not has_city:
+            ack_msg += "\n\n👉 Kripya apni Company / Firm ka naam aur City share kar dijiye taaki formal estimate taiyaar kiya ja sake."
+            session["waiting_for_detail"] = "company_city"
+        else:
+            ack_msg += f"\n\n✅ Details on Record: {session.get('quantity')} Gross | {session.get('company')}, {session.get('city')}."
+            session["waiting_for_detail"] = None
+
+        # 8. Save the inquiry persistently BEFORE claiming it was forwarded
+        full_notes = f"{caption or 'Buyer button sample'} | Internal CV: {internal_cv_notes}"
+        db.save_inquiry_with_photo(
+            inquiry_id=inquiry_id,
+            phone=from_phone,
+            buyer_name=contact_name,
+            photo_b64=b64_img,
+            notes=full_notes,
+            crm_status="New Inquiry - Pending Sales Assignment",
+            company=session.get("company", ""),
+            city=session.get("city", ""),
+            quantity=session.get("quantity") or 0
+        )
+
         inq_entry = {
-            "id": msg_id,
-            "timestamp": t_now,
+            "id": inquiry_id,
+            "timestamp": ist_now.strftime("%Y-%m-%d %H:%M:%S"),
             "buyer_name": contact_name,
             "phone": from_phone,
             "photo_b64": b64_img,
@@ -423,8 +521,13 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
             "matched_name": (get_item_by_sku(best_sku) or {}).get("name", "Custom Button Development") if best_sku else "Custom Button Development",
             "matched_size": (get_item_by_sku(best_sku) or {}).get("size_ligne", "") if best_sku else "",
             "quantity": session.get("quantity") or 0,
-            "status": "Sample Identified" if best_sku else "Custom Development Requested",
-            "notes": caption or ""
+            "company": session.get("company", ""),
+            "city": session.get("city", ""),
+            "status": "New Inquiry - Pending Sales Assignment",
+            "crm_status": "New Inquiry - Pending Sales Assignment",
+            "notes": full_notes,
+            "human_takeover": session.get("human_takeover", 0),
+            "assigned_salesman": session.get("assigned_salesman", "Unassigned")
         }
         existing_idx = next((i for i, x in enumerate(live_whatsapp_inquiries) if x.get("phone") == from_phone), None)
         if existing_idx is not None:
@@ -432,126 +535,13 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
         live_whatsapp_inquiries.insert(0, inq_entry)
         save_live_inquiries()
 
-        db.save_inquiry_with_photo(
-            inquiry_id=msg_id,
-            phone=from_phone,
-            buyer_name=contact_name,
-            photo_b64=b64_img,
-            notes=caption or "",
-            crm_status="Sample Identified" if best_sku else "Custom Development Requested"
-        )
         log_chat_event(from_phone, contact_name, "buyer", "image", caption or "📷 [Sample Button Photo Sent]", photo_b64=b64_img, sku=best_sku)
 
-        # 3. Handle non-button images
-        if status == "NO_BUTTON_DETECTED" or not res.get("is_button", True):
-            send_whatsapp_text(
-                from_phone,
-                f"Ji {salutation}, aapne jo photo share ki hai usme button clear nahi dikh raha hai. "
-                f"Kripya button ki ek close-up photo achhi roshni me bhejiye, hum turant ready stock check karke batate hain.",
-                contact_name
-            )
-            db.update_inbound_message_status(msg_id, "COMPLETED")
-            return
-
-        # 3.5 Handle multiple distinct designs or obscured front face (NEED CLEAR FRONT PHOTO)
-        if status == "NEED_CLEAR_PHOTO" or res.get("decision_label") == "NEED CLEAR FRONT PHOTO":
-            mixed = res.get("visual_analysis", {}).get("mixed_designs_detected", False)
-            if mixed:
-                need_msg = (
-                    f"Ji {salutation}, aapki photo me ek se zyada button designs dikh rahe hain.\n\n"
-                    f"Kripya confirm karein ki aapko inme se kaun sa design chahiye, ya single button ki focused photo share karein taaki exact matching ho sake."
-                )
-            else:
-                need_msg = (
-                    f"Ji {salutation}, photo me button ka front-face design aur rim details saaf nahi dikh rahe hain.\n\n"
-                    f"Kripya achhi roshni me seedhi focused front photo bhejiye taaki exact matching ho sake."
-                )
-            send_whatsapp_text(from_phone, need_msg, contact_name)
-            db.update_inbound_message_status(msg_id, "COMPLETED")
-            print(f"📤 Requested clear front photo from {from_phone}")
-            return
-
-        # 4. RULE: EXACT MATCH ONLY (अगर एग्जैक्ट बटन नहीं है, तो सिमिलर दिखाने की परमिशन माँगें)
-        if status in ["NOT_IN_CATALOG", "POSSIBLE_MATCH", "NO_EXACT_MATCH"] or not best_sku or res.get("decision_label") in ["POSSIBLE MATCH", "NO EXACT MATCH"]:
-            session["has_photo"] = True
-            session["waiting_for_similar_permission"] = True
-            alts = SAMPLE_CATALOG[:2]
-            session["suggested_alternatives"] = [a["sku"] for a in alts]
-            not_in_cat_msg = (
-                f"Ji {salutation}, aapka sample dekh liya hai.\n\n"
-                f"Ye exact button design abhi hamare ready stock me available nahi hai.\n\n"
-                f"Kya main aapko isse milte-julte (similar) designs ke buttons dikha doon?"
-            )
-            send_whatsapp_text(from_phone, not_in_cat_msg, contact_name)
-            save_buyer_session(from_phone, session)
-            db.update_inbound_message_status(msg_id, "COMPLETED")
-            print(f"📤 Asked permission for similar designs to {from_phone}")
-            return
-
-        # 5. Handle Verified EXACT Catalog Match
-        matched_item = get_item_by_sku(best_sku) or SAMPLE_CATALOG[0]
-        session["has_photo"] = True
-        session["matched_sku"] = matched_item["sku"]
-        session["matched_name"] = matched_item["name"]
-        raw_sz = str(matched_item.get("size_ligne", "")).strip()
-        if "/" not in raw_sz and "," not in raw_sz and "or" not in raw_sz.lower():
-            session["matched_size"] = raw_sz
-        else:
-            session["matched_size"] = None
-        session["last_active_sku"] = matched_item["sku"]
-        session["quantity"] = None
-        session["customer_required_quantity"] = None
-        session["waiting_for_similar_permission"] = False
-        session["waiting_for_similar_approval"] = False
-
-        # Auto-save latest WhatsApp inquiry for Tab 5 Proforma 1-Click
-        try:
-            ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
-            if os.path.exists(ds_path):
-                with open(ds_path, "r", encoding="utf-8") as fp:
-                    ds = json.load(fp)
-                ds["latest_whatsapp_inquiry"] = {
-                    "buyer_name": contact_name,
-                    "phone": from_phone,
-                    "sku": matched_item["sku"],
-                    "qty_gross": session.get("quantity") or 200,
-                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                with open(ds_path, "w", encoding="utf-8") as fp:
-                    json.dump(ds, fp, indent=2)
-        except Exception as e:
-            print(f"Error saving latest inquiry: {e}")
-
-        # Send ONLY THE EXACT MATCHING BUTTON with Truthful Stock Disclaimer (no false godown claims)
-        p_img_path = os.path.join(CAT_DIR, f"{matched_item['sku']}.jpg")
-        if os.path.exists(p_img_path):
-            with open(p_img_path, "rb") as fp:
-                p_img_bytes = fp.read()
-            best_caption = (
-                f"🏆 *Matching Catalog Design: {matched_item['name']}*\n"
-                f"• SKU: {matched_item['sku']}\n"
-                f"• Specification: {matched_item.get('size_ligne', '')} • {matched_item.get('holes', '')}\n"
-                f"• Catalog Reference Stock: {matched_item.get('stock_gross', 0):,} Gross (Subject to physical warehouse verification)\n\n"
-                f"Same export finish sample ready hai. Warehouse physical stock verification dispatch se pehle confirm ki jayegi."
-            )
-            send_whatsapp_image(from_phone, p_img_bytes, best_caption, sku=matched_item["sku"], product_name=matched_item["name"], size_opts=matched_item.get("size_ligne", ""), buyer_name=contact_name)
-            await asyncio.sleep(1.2)
-
-        # ONE QUESTION AT A TIME RULE: Ask ONLY for required quantity
-        if not session.get("quantity"):
-            cta_text = (
-                "Ji sir, aapke share kiye hue sample ka matching catalog design hamare paas available hai.\n\n"
-                "Aapko kitni quantity chahiye?"
-            )
-        else:
-            cta_text = (
-                f"Ji sir, aapka sample identify ho gaya hai. "
-                f"Aapki {session['quantity']} Gross requirement ke according hum quotation prepare kar rahe hain."
-            )
-        send_whatsapp_text(from_phone, cta_text, contact_name)
+        # Send truthful acknowledgement (ZERO automatic catalog product photos sent)
+        send_whatsapp_text(from_phone, ack_msg, contact_name)
         save_buyer_session(from_phone, session)
         db.update_inbound_message_status(msg_id, "COMPLETED")
-        print(f"📤 Sent Exact Match and Quantity Question to {from_phone}")
+        print(f"📤 Sent Sales Intake Acknowledgement ({inquiry_id}) to {from_phone}")
         return
 
     # ---------------- CASE 2: BUYER SENT A TEXT MESSAGE ----------------
@@ -560,6 +550,71 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
         lower_text = text_body.lower()
         print(f"💬 [INCOMING TEXT] From: {from_phone} | Message: '{text_body}'")
         log_chat_event(from_phone, contact_name, "buyer", "text", text_body)
+
+        # ---------------- STEP 0: CONVERSATIONAL MISSING DETAILS HANDLER ----------------
+        # 1. Missing Quantity Handler (When bot prompted for missing quantity on sample intake)
+        is_qty_reply = (session.get("waiting_for_detail") == "quantity" and bool(re.search(r'\b\d+\b', lower_text)))
+        if is_qty_reply and not session.get("waiting_for_similar_approval") and not session.get("waiting_for_custom_mfg_qty") and not any(w in lower_text for w in ["ki jagah", "badal", "replace"]):
+            num_m = re.search(r'\b(\d+)\b', lower_text)
+            if num_m:
+                qty_val = int(num_m.group(1))
+                session["quantity"] = qty_val
+                # Update DB and live feed
+                with db.get_db_connection() as conn:
+                    conn.execute("UPDATE live_inquiries SET quantity = ? WHERE phone = ?", (qty_val, db.normalize_phone(from_phone)))
+                for item in live_whatsapp_inquiries:
+                    if item.get("phone") == from_phone:
+                        item["quantity"] = qty_val
+                        break
+                save_live_inquiries()
+
+                has_comp = bool(session.get("company"))
+                has_city = bool(session.get("city"))
+                if not has_comp or not has_city:
+                    session["waiting_for_detail"] = "company_city"
+                    reply = (
+                        f"Ji dhanyawad {salutation}! Aapki *{qty_val:,} Gross* requirement record ho gayi hai.\n\n"
+                        f"👉 Kripya apni Company / Firm ka naam aur City bata dijiye taaki formal quote taiyaar kiya ja sake."
+                    )
+                else:
+                    session["waiting_for_detail"] = None
+                    reply = (
+                        f"Ji dhanyawad {salutation}! Aapki requirement (*{qty_val:,} Gross* | {session.get('company')}, {session.get('city')}) record ho chuki hai.\n\n"
+                        f"Hamare sales executive physically warehouse stock verify karke jald hi aapse sampark karenge."
+                    )
+                send_whatsapp_text(from_phone, reply, contact_name)
+                save_buyer_session(from_phone, session)
+                db.update_inbound_message_status(msg_id, "COMPLETED")
+                return
+
+        # 2. Missing Company / City Handler
+        if session.get("waiting_for_detail") == "company_city" and not any(w in lower_text for w in ["rate", "price", "catalog", "sample", "urgent", "kab", "kisko", "nahi"]):
+            parts = [p.strip() for p in re.split(r'[,/-]|\bfrom\b|\bmein\b|\bse\b', text_body, flags=re.IGNORECASE) if p.strip()]
+            company_str = parts[0] if parts else text_body.strip()
+            city_str = parts[1] if len(parts) > 1 else ""
+            session["company"] = company_str
+            if city_str:
+                session["city"] = city_str
+            session["waiting_for_detail"] = None
+
+            with db.get_db_connection() as conn:
+                conn.execute("UPDATE live_inquiries SET company = ?, city = ? WHERE phone = ?", (company_str, city_str, db.normalize_phone(from_phone)))
+            for item in live_whatsapp_inquiries:
+                if item.get("phone") == from_phone:
+                    item["company"] = company_str
+                    item["city"] = city_str
+                    break
+            save_live_inquiries()
+
+            qty_part = f" for *{session.get('quantity'):,} Gross*" if session.get("quantity") else ""
+            reply = (
+                f"Ji bohot dhanyawad {salutation}! Aapki details (*{company_str}*{f', {city_str}' if city_str else ''}){qty_part} note kar li gayi hain.\n\n"
+                f"Hamare sales executive physically warehouse stock & pricing check karke aapse isi WhatsApp number par sampark karenge."
+            )
+            send_whatsapp_text(from_phone, reply, contact_name)
+            save_buyer_session(from_phone, session)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            return
 
         # ---------------- STEP A: HANDLE SIMILAR PERMISSION RESPONSE ----------------
         if session.get("waiting_for_similar_permission"):
@@ -1397,6 +1452,81 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
 
     db.update_inbound_message_status(msg_id, "COMPLETED")
 
+# ----------------- SALES TEAM ACTIONS (4 QUICK ACTIONS) -----------------
+
+def send_verified_stock_and_photo(phone: str, sku: str, warehouse_stock: int = 0, salesperson_name: str = "Sales Team", custom_note: str = "") -> dict:
+    """Action 1: Salesperson physically checks warehouse stock and sends verified photo + stock details to customer on WhatsApp."""
+    cat_item = get_item_by_sku(sku) or {}
+    p_img_path = os.path.join(CAT_DIR, f"{sku}.jpg")
+    img_bytes = None
+    if os.path.exists(p_img_path):
+        with open(p_img_path, "rb") as fp:
+            img_bytes = fp.read()
+            
+    item_name = cat_item.get("name", "Shell Button")
+    size_str = cat_item.get("size_ligne", "")
+    stock_to_show = warehouse_stock if warehouse_stock > 0 else cat_item.get("stock_gross", 0)
+    
+    caption = (
+        f"🏆 *Verified Catalog Design: {item_name}*\n"
+        f"• SKU: {sku}\n"
+        f"• Size: {size_str} • Specification: {cat_item.get('holes', '2-Hole')}\n"
+        f"• Warehouse Physical Stock: *{stock_to_show:,} Gross* (Physically Verified)\n\n"
+        f"Ye sample hamare warehouse godown me ready available hai. "
+        f"{custom_note if custom_note else 'Aapki required quantity dispatch ke liye confirm kar sakte hain.'}\n\n"
+        f"— Verified by: {salesperson_name} (ABC Buttons)"
+    )
+    if img_bytes:
+        res = send_whatsapp_image(phone, img_bytes, caption, sku=sku, product_name=item_name, size_opts=size_str)
+    else:
+        res = send_whatsapp_text(phone, caption)
+        
+    db.update_inquiry_crm_meta(phone, action_taken=f"Stock Check Verified ({sku}, {stock_to_show} Gr)", crm_status="Stock Confirmed - Ready to Quote")
+    return res
+
+def send_similar_options_pitch(phone: str, sku_list: list, salesperson_name: str = "Sales Team") -> dict:
+    """Action 2: Salesperson offers similar options from ready stock with buyer permission request."""
+    alts = [get_item_by_sku(s) for s in sku_list[:2]]
+    alts = [a for a in alts if a] or SAMPLE_CATALOG[:2]
+    
+    intro_text = (
+        f"Namaste sir, aapka sample dekh kar hamari Sales Team ({salesperson_name}) ne ready warehouse stock se "
+        f"ye milte-julte (similar) running options select kiye hain:\n\n"
+        f"Kya hum inke photos aur specifications aapse share karein?"
+    )
+    res = send_whatsapp_text(phone, intro_text)
+    
+    for idx, alt_item in enumerate(alts, 1):
+        alt_path = os.path.join(CAT_DIR, f"{alt_item['sku']}.jpg")
+        if os.path.exists(alt_path):
+            with open(alt_path, "rb") as afp:
+                alt_bytes = afp.read()
+            alt_caption = (
+                f"🔘 *Similar Option {idx}: {alt_item['name']}*\n"
+                f"• SKU: {alt_item['sku']} • Size: {alt_item.get('size_ligne', '')}\n"
+                f"• Ready Godown Stock: *{alt_item.get('stock_gross', 0):,} Gross*\n"
+                f"• Recommended by: {salesperson_name}"
+            )
+            send_whatsapp_image(phone, alt_bytes, alt_caption, sku=alt_item["sku"], product_name=alt_item["name"])
+            
+    db.update_inquiry_crm_meta(phone, action_taken=f"Similar Options Sent ({', '.join([a['sku'] for a in alts])})", crm_status="Similar Options Offered")
+    return res
+
+def send_custom_mfg_feasibility(phone: str, moq: int = 500, lead_days: int = 10, salesperson_name: str = "Sales Team") -> dict:
+    """Action 3: Salesperson sends factory custom manufacturing feasibility."""
+    msg = (
+        f"Namaste sir, hamari factory technical team ne aapka sample photo check kiya hai.\n\n"
+        f"🏭 *Factory Custom Manufacturing Feasibility:*\n"
+        f"• Exact Design & Finish: Possible (Same material & export polish)\n"
+        f"• Minimum Order Quantity (MOQ): *{moq:,} Gross*\n"
+        f"• Production & Delivery Time: *{lead_days}-12 Days*\n\n"
+        f"Agar aap custom production proceed karna chahein, toh hum counter-sample taiyaar karwa sakte hain.\n\n"
+        f"— {salesperson_name} (ABC Buttons Production Desk)"
+    )
+    res = send_whatsapp_text(phone, msg)
+    db.update_inquiry_crm_meta(phone, action_taken=f"Factory Feasibility Sent (MOQ {moq} Gr)", crm_status="Custom Mfg Offered")
+    return res
+
 # ----------------- WEBHOOK ENDPOINTS -----------------
 
 @app.get("/")
@@ -1485,7 +1615,7 @@ def get_live_inquiries(request: Request):
 
 @app.post("/api/crm/update")
 async def update_crm_status_endpoint(request: Request):
-    """Synchronizes Human Takeover and Salesperson status from Streamlit Cloud to Render in real-time."""
+    """Synchronizes Human Takeover, Salesperson, Deal Stage, Company, City, and Actions from Streamlit Cloud to Render in real-time."""
     if not verify_admin_auth(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized. Valid X-API-Key required."})
     try:
@@ -1497,7 +1627,11 @@ async def update_crm_status_endpoint(request: Request):
             phone=phone,
             human_takeover=body.get("human_takeover"),
             assigned_salesman=body.get("assigned_salesman"),
-            crm_status=body.get("crm_status")
+            crm_status=body.get("crm_status"),
+            action_taken=body.get("action_taken"),
+            company=body.get("company"),
+            city=body.get("city"),
+            quantity=body.get("quantity")
         )
         if success and rows > 0:
             return JSONResponse(content={"status": "success", "phone": phone, "rows_affected": rows})

@@ -925,7 +925,9 @@ Return output strictly in JSON format with keys:
         return res
 
     # Assign Decision Label based on candidate confidence and gate status
-    if res.get("best_match_sku") and res.get("match_confidence", 0) >= 80:
+    if res.get("decision_label") in ["POSSIBLE MATCH", "NEED CLEAR FRONT PHOTO", "NO EXACT MATCH"]:
+        pass
+    elif res.get("best_match_sku") and res.get("match_confidence", 0) >= 80:
         res["decision_label"] = "EXACT DESIGN CANDIDATE"
         res["decision_explanation"] = "All visible mandatory front-face attributes match catalog profile, subject to physical verification."
     elif res.get("best_match_sku"):
@@ -1152,9 +1154,10 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
 
         # CRITICAL: Smooth flat-face buttons must NEVER match ABC-139 raised saucer rim!
         if is_smooth_or_flat:
-            parsed["match_status"] = "MATCH_FOUND"
+            parsed["match_status"] = "POSSIBLE_MATCH"
             parsed["best_match_sku"] = "ABC-136"
-            parsed["match_confidence"] = 88
+            parsed["decision_label"] = "POSSIBLE MATCH"
+            parsed["match_confidence"] = 78
             parsed["match_reason"] = "Smooth Pearl Polish Match: White Pearl Agoya Shell Button (SKU ABC-136). Smooth face without raised saucer rim."
             parsed["alternative_sku"] = "ABC-139"
             parsed["alternative_reason"] = "ABC-139 has a raised saucer rim and recessed center."
