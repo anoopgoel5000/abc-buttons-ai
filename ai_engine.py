@@ -890,16 +890,16 @@ Return output strictly in JSON format with keys:
         res["top_candidates"] = []
         return res
 
-    if res.get("match_status") == "NOT_IN_CATALOG" or not res.get("best_match_sku") or ff_res["decision_label"] == "NO EXACT MATCH":
-        if ff_res["decision_label"] == "NO EXACT MATCH" and any(k in (user_query or "").lower() for k in ["engraved", "flower", "wood", "horn", "metal", "shank"]):
-            res["decision_label"] = "NO EXACT MATCH"
-            res["decision_explanation"] = ff_res["decision_explanation"]
-            res["match_status"] = "NOT_IN_CATALOG"
-            res["best_match_sku"] = None
-            res["match_confidence"] = 20
-            res["match_reason"] = ff_res["match_reason"]
-            res["top_candidates"] = build_top_3_candidates(res, target_bytes=image_bytes)
-            return res
+    # Synchronize with FrontFaceDesignMatcher decisions
+    if ff_res.get("decision_label") == "NO EXACT MATCH":
+        res["decision_label"] = "NO EXACT MATCH"
+        res["decision_explanation"] = ff_res["decision_explanation"]
+        res["match_status"] = "NOT_IN_CATALOG"
+        res["best_match_sku"] = None
+        res["match_confidence"] = ff_res.get("match_confidence", 25)
+        res["match_reason"] = ff_res["match_reason"]
+        res["top_candidates"] = ff_res.get("top_candidates") or build_top_3_candidates(res, target_bytes=image_bytes)
+        return res
 
     # If front-face engine identifies a POSSIBLE MATCH due to design/rim variance
     if ff_res.get("decision_label") == "POSSIBLE MATCH":
@@ -910,6 +910,17 @@ Return output strictly in JSON format with keys:
         res["match_confidence"] = ff_res.get("match_confidence", 72)
         res["match_reason"] = ff_res.get("match_reason", "Possible Match: Design variance exists.")
         res["whatsapp_buyer_draft"] = ff_res.get("whatsapp_buyer_draft", "")
+        res["top_candidates"] = ff_res.get("top_candidates") or build_top_3_candidates(res, target_bytes=image_bytes)
+        return res
+
+    if ff_res.get("decision_label") == "EXACT DESIGN CANDIDATE" and ff_res.get("best_match_sku"):
+        res["decision_label"] = "EXACT DESIGN CANDIDATE"
+        res["decision_explanation"] = ff_res.get("decision_explanation", "All visible mandatory front-face attributes match catalog profile, subject to physical verification.")
+        res["match_status"] = "MATCH_FOUND"
+        res["best_match_sku"] = ff_res.get("best_match_sku")
+        res["match_confidence"] = max(int(res.get("match_confidence") or 88), int(ff_res.get("match_confidence") or 88))
+        res["match_reason"] = ff_res.get("match_reason", res.get("match_reason"))
+        res["whatsapp_buyer_draft"] = ff_res.get("whatsapp_buyer_draft") or res.get("whatsapp_buyer_draft")
         res["top_candidates"] = ff_res.get("top_candidates") or build_top_3_candidates(res, target_bytes=image_bytes)
         return res
 
@@ -1156,7 +1167,7 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
             parsed["alternative_sku"] = "ABC-136"
             parsed["alternative_reason"] = "ABC-136 is white agoya shell with smooth polish."
             return _finalize_draft(parsed)
-        elif is_2_hole and any(k in raw_text for k in ["river", "saucer", "raised"]):
+        elif is_2_hole and any(k in raw_text for k in ["saucer", "raised rim", "deep rim"]):
             parsed["match_status"] = "MATCH_FOUND"
             parsed["best_match_sku"] = "ABC-139"
             parsed["match_confidence"] = 92

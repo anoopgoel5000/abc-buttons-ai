@@ -472,7 +472,7 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
             return
 
         # 4. RULE: EXACT MATCH ONLY (अगर एग्जैक्ट बटन नहीं है, तो सिमिलर दिखाने की परमिशन माँगें)
-        if status == "NOT_IN_CATALOG" or not best_sku:
+        if status in ["NOT_IN_CATALOG", "POSSIBLE_MATCH", "NO_EXACT_MATCH"] or not best_sku or res.get("decision_label") in ["POSSIBLE MATCH", "NO EXACT MATCH"]:
             session["has_photo"] = True
             session["waiting_for_similar_permission"] = True
             alts = SAMPLE_CATALOG[:2]
