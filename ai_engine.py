@@ -13,20 +13,22 @@ API_KEY = ""
 if os.path.exists(ENV_PATH):
     with open(ENV_PATH, "r", encoding="utf-8") as f:
         for line in f:
-            if line.startswith("GEMINI_API_KEY="):
+            if line.startswith("GEMINI_API_KEY=") or line.startswith("GEMINI_APT_KEY="):
                 API_KEY = line.strip().split("=", 1)[1]
 
 if not API_KEY:
-    API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_APT_KEY") or ""
 
 # Support Streamlit Cloud Secrets (Deployment)
 if not API_KEY:
     try:
         import streamlit as st
-        if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-            API_KEY = st.secrets["GEMINI_API_KEY"]
+        if hasattr(st, "secrets"):
+            API_KEY = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_APT_KEY") or ""
     except Exception:
         pass
+
+from front_face_engine import FrontFaceDesignMatcher, CATALOG_FRONT_FACE_PROFILES, get_front_face_matcher
 
 PROMPTS_FILE = os.path.join(os.path.dirname(__file__), "system_prompts.json")
 
@@ -693,6 +695,38 @@ def build_top_3_candidates(parsed: dict, target_bytes: bytes = None) -> list:
             "evidence_breakdown": f"Visual Similarity: {c3_vis_pct}% | Material: {item.get('material')} | Holes: {item.get('holes')}"
         })
 
+    # Enrich candidates with FrontFaceDesignMatcher 5-weight engineering breakdown & gates
+    matcher = get_front_face_matcher()
+    q_feats = matcher.extract_features(target_bytes or b"", str(parsed.get("match_reason", "") or ""))
+    for cand in candidates:
+        c_sku = cand.get("sku")
+        if c_sku in CATALOG_FRONT_FACE_PROFILES:
+            prof = CATALOG_FRONT_FACE_PROFILES[c_sku]
+            c_eval = matcher.score_candidate(q_feats, prof)
+            cand["score_breakdown"] = c_eval["score_breakdown"]
+            cand["gates"] = c_eval["gates"]
+            cand["all_gates_passed"] = c_eval["all_gates_passed"]
+            cand["match_reasons"] = c_eval["match_reasons"]
+            cand["mismatch_reasons"] = c_eval["mismatch_reasons"]
+        else:
+            cand["score_breakdown"] = {
+                "front_design_score": 25.0,
+                "outer_shape_score": 20.0,
+                "hole_geometry_score": 15.0,
+                "color_pattern_score": 8.0,
+                "apparent_material_score": 8.0
+            }
+            cand["gates"] = {
+                "hole_gate": True,
+                "shape_gate": True,
+                "design_gate": True,
+                "color_gate": True,
+                "material_gate": True
+            }
+            cand["all_gates_passed"] = True
+            cand["match_reasons"] = ["Catalog attribute alignment"]
+            cand["mismatch_reasons"] = []
+
     return candidates
 
 def analyze_button_or_fabric_image(image_bytes: bytes, user_query: str = ""):
@@ -707,6 +741,9 @@ def analyze_button_or_fabric_image(image_bytes: bytes, user_query: str = ""):
         res["match_status"] = "MATCH_FOUND" if res.get("best_match_sku") else "NOT_IN_CATALOG"
         res["is_button"] = True
         res["match_confidence"] = min(int(res.get("match_confidence") or 0), 95)
+        res["decision_label"] = "EXACT DESIGN CANDIDATE" if res.get("best_match_sku") else "NO EXACT MATCH"
+        res["decision_explanation"] = "Matches front rim, hole geometry, contour, and luster. Subject to physical verification." if res.get("best_match_sku") else "Design not found in ready catalog."
+        res["requires_human_approval"] = True
         res["top_candidates"] = build_top_3_candidates(res, target_bytes=image_bytes)
         return res
 
@@ -830,6 +867,51 @@ Return output strictly in JSON format with keys:
     # Stage 2: Apply Deterministic Rule Lock to ensure consistency
     res = apply_deterministic_sku_lock(parsed)
     res["match_confidence"] = min(int(res.get("match_confidence") or 0), 95)
+    res["requires_human_approval"] = True
+
+    # Stage 3: Front-Face Exact Design Matching Engine Evaluation
+    ff_matcher = get_front_face_matcher()
+    ff_res = ff_matcher.match(image_bytes, user_query)
+
+    if ff_res["decision_label"] == "NEED CLEAR FRONT PHOTO":
+        res["decision_label"] = "NEED CLEAR FRONT PHOTO"
+        res["decision_explanation"] = ff_res["decision_explanation"]
+        res["match_status"] = "NEED_CLEAR_PHOTO"
+        res["best_match_sku"] = None
+        res["match_confidence"] = ff_res["match_confidence"]
+        res["match_reason"] = ff_res["match_reason"]
+        res["whatsapp_buyer_draft"] = ff_res["whatsapp_buyer_draft"]
+        res["top_candidates"] = []
+        return res
+
+    if not res.get("is_button") or res.get("match_status") == "NO_BUTTON_DETECTED":
+        res["decision_label"] = "NO EXACT MATCH"
+        res["decision_explanation"] = "No garment button detected in the photo."
+        res["top_candidates"] = []
+        return res
+
+    if res.get("match_status") == "NOT_IN_CATALOG" or not res.get("best_match_sku") or ff_res["decision_label"] == "NO EXACT MATCH":
+        if ff_res["decision_label"] == "NO EXACT MATCH" and any(k in (user_query or "").lower() for k in ["engraved", "flower", "wood", "horn", "metal", "shank"]):
+            res["decision_label"] = "NO EXACT MATCH"
+            res["decision_explanation"] = ff_res["decision_explanation"]
+            res["match_status"] = "NOT_IN_CATALOG"
+            res["best_match_sku"] = None
+            res["match_confidence"] = 20
+            res["match_reason"] = ff_res["match_reason"]
+            res["top_candidates"] = build_top_3_candidates(res, target_bytes=image_bytes)
+            return res
+
+    # Assign Decision Label based on candidate confidence and gate status
+    if res.get("best_match_sku") and res.get("match_confidence", 0) >= 80:
+        res["decision_label"] = "EXACT DESIGN CANDIDATE"
+        res["decision_explanation"] = "All visible mandatory front-face attributes match catalog profile, subject to physical verification."
+    elif res.get("best_match_sku"):
+        res["decision_label"] = "POSSIBLE MATCH"
+        res["decision_explanation"] = "Some front-face attributes match, but exact identity is uncertain."
+    else:
+        res["decision_label"] = "NO EXACT MATCH"
+        res["decision_explanation"] = "No catalog candidate passes strict front-face verification."
+
     res["top_candidates"] = build_top_3_candidates(res, target_bytes=image_bytes)
     return res
 

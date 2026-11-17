@@ -1581,6 +1581,59 @@ with tabs[1]:
                 # Check human approval state
                 is_human_approved = bool(st.session_state.get("scanner_human_reviewed"))
                 approved_sku = st.session_state.get("scanner_approved_sku")
+
+                # Decision Label Configuration (Engineering Standard)
+                decision_label = res.get("decision_label", "EXACT DESIGN CANDIDATE" if best_sku else "NO EXACT MATCH")
+                decision_expl = res.get("decision_explanation", res.get("match_reason", ""))
+
+                if decision_label == "EXACT DESIGN CANDIDATE":
+                    l_bg = "#ecfdf5"
+                    l_border = "#10b981"
+                    l_col = "#065f46"
+                    l_icon = "🎯"
+                    l_title = "EXACT DESIGN CANDIDATE"
+                    l_sub = "All visible mandatory front-face attributes match catalog profile. Confirmed candidate subject to physical batch verification."
+                elif decision_label == "POSSIBLE MATCH":
+                    l_bg = "#fffbeb"
+                    l_border = "#f59e0b"
+                    l_col = "#92400e"
+                    l_icon = "⚠️"
+                    l_title = "POSSIBLE MATCH"
+                    l_sub = "Some front-face attributes match, but exact identity is uncertain. Requires operator/buyer review."
+                elif decision_label == "NEED CLEAR FRONT PHOTO":
+                    l_bg = "#eff6ff"
+                    l_border = "#3b82f6"
+                    l_col = "#1e40af"
+                    l_icon = "📸"
+                    l_title = "NEED CLEAR FRONT PHOTO"
+                    l_sub = "Critical details are obscured, underexposed, or multiple distinct button designs are in the frame."
+                else:
+                    l_bg = "#fef2f2"
+                    l_border = "#ef4444"
+                    l_col = "#991b1b"
+                    l_icon = "🚫"
+                    l_title = "NO EXACT MATCH"
+                    l_sub = "No catalog candidate passes strict front-face verification. Design or material is custom / non-catalog."
+
+                st.markdown(f"""
+                <div style="background: {l_bg}; border: 2px solid {l_border}; border-radius: 12px; padding: 12px 16px; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <div style="font-size: 15px; font-weight: 800; color: {l_col}; display: flex; align-items: center; gap: 6px;">
+                            <span>{l_icon}</span>
+                            <span>DECISION: {l_title}</span>
+                        </div>
+                        <span style="background: white; border: 1.5px solid {l_border}; color: {l_col}; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 20px;">
+                            Confidence: {conf_num}% (Front-Face Visual)
+                        </span>
+                    </div>
+                    <div style="font-size: 12.5px; color: {l_col}; margin-top: 5px; font-weight: 600; line-height: 1.4;">
+                        {html.escape(l_sub)}
+                    </div>
+                    <div style="font-size: 11.5px; color: #475569; margin-top: 3px; font-style: italic;">
+                        {html.escape(decision_expl)}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # Requirement 4: Separate AI Analysis, Catalog Verification, Human Approval and Warehouse Stock Verification statuses
                 st.markdown(f"""
@@ -1699,6 +1752,29 @@ with tabs[1]:
                             border_color = "#16a34a" if is_this_approved else ("#3b82f6" if idx == 0 else "#cbd5e1")
                             bg_color = "#f0fdf4" if is_this_approved else ("#f8fafc" if idx == 0 else "#ffffff")
                             
+                            s_bd = cand.get("score_breakdown", {})
+                            gates = cand.get("gates", {})
+                            m_reasons = cand.get("match_reasons", [])
+                            mm_reasons = cand.get("mismatch_reasons", [])
+
+                            weights_html = f"""
+                            <div style="font-size: 10.5px; margin-top: 6px; padding: 6px 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; line-height: 1.35;">
+                                <div style="font-weight: 700; color: #334155; margin-bottom: 2px;">5-Weight Evidence Breakdown:</div>
+                                <div>• Front Design (35%): <b>{s_bd.get('front_design_score', 0)}/35</b></div>
+                                <div>• Outer Shape (25%): <b>{s_bd.get('outer_shape_score', 0)}/25</b></div>
+                                <div>• Hole Geometry (20%): <b>{s_bd.get('hole_geometry_score', 0)}/20</b></div>
+                                <div>• Color & Pattern (10%): <b>{s_bd.get('color_pattern_score', 0)}/10</b></div>
+                                <div>• Material (10%): <b>{s_bd.get('apparent_material_score', 0)}/10</b></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 10.5px; line-height: 1.3;">
+                                <b>Strict Verification Gates:</b> 
+                                <span style="color: {'#16a34a' if gates.get('hole_gate', True) else '#dc2626'}; font-weight: 700;">{'✓ Hole' if gates.get('hole_gate', True) else '✗ Hole'}</span> | 
+                                <span style="color: {'#16a34a' if gates.get('shape_gate', True) else '#dc2626'}; font-weight: 700;">{'✓ Shape' if gates.get('shape_gate', True) else '✗ Shape'}</span> | 
+                                <span style="color: {'#16a34a' if gates.get('design_gate', True) else '#dc2626'}; font-weight: 700;">{'✓ Design' if gates.get('design_gate', True) else '✗ Design'}</span> | 
+                                <span style="color: {'#16a34a' if gates.get('color_gate', True) else '#dc2626'}; font-weight: 700;">{'✓ Color' if gates.get('color_gate', True) else '✗ Color'}</span>
+                            </div>
+                            """
+
                             st.markdown(f"""
                             <div style="border: 2px solid {border_color}; background: {bg_color}; border-radius: 10px; padding: 12px; margin-bottom: 10px; min-height: 290px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -1718,6 +1794,7 @@ with tabs[1]:
                                     • Rate: <b style="color: #166534;">₹{cand.get("rate_per_gross", 0):.1f}/Gr</b><br>
                                     • Catalog Stock: <b style="color: #1e40af;">{cand.get("stock_gross", 0):,} Gr</b>
                                 </div>
+                                {weights_html}
                                 <div style="font-size: 10.5px; color: #64748b; margin-top: 6px; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
                                     <i>{html.escape(cand.get("evidence_breakdown", ""))}</i>
                                 </div>

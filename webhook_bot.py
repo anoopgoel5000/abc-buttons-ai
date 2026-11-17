@@ -453,6 +453,24 @@ async def _process_single_whatsapp_message_impl(msg: dict, contacts: list, msg_i
             db.update_inbound_message_status(msg_id, "COMPLETED")
             return
 
+        # 3.5 Handle multiple distinct designs or obscured front face (NEED CLEAR FRONT PHOTO)
+        if status == "NEED_CLEAR_PHOTO" or res.get("decision_label") == "NEED CLEAR FRONT PHOTO":
+            mixed = res.get("visual_analysis", {}).get("mixed_designs_detected", False)
+            if mixed:
+                need_msg = (
+                    f"Ji {salutation}, aapki photo me ek se zyada button designs dikh rahe hain.\n\n"
+                    f"Kripya confirm karein ki aapko inme se kaun sa design chahiye, ya single button ki focused photo share karein taaki exact matching ho sake."
+                )
+            else:
+                need_msg = (
+                    f"Ji {salutation}, photo me button ka front-face design aur rim details saaf nahi dikh rahe hain.\n\n"
+                    f"Kripya achhi roshni me seedhi focused front photo bhejiye taaki exact matching ho sake."
+                )
+            send_whatsapp_text(from_phone, need_msg, contact_name)
+            db.update_inbound_message_status(msg_id, "COMPLETED")
+            print(f"📤 Requested clear front photo from {from_phone}")
+            return
+
         # 4. RULE: EXACT MATCH ONLY (अगर एग्जैक्ट बटन नहीं है, तो सिमिलर दिखाने की परमिशन माँगें)
         if status == "NOT_IN_CATALOG" or not best_sku:
             session["has_photo"] = True
@@ -1388,8 +1406,8 @@ def home():
         "service": "ABC Buttons 24/7 WhatsApp AI Bot",
         "version": "2.3.0-V12",
         "env_status": {
-            "whatsapp_token_configured": bool(WHATSAPP_TOKEN),
-            "phone_id_configured": bool(PHONE_NUMBER_ID),
+            "whatsapp_token_configured": bool(getattr(__import__("whatsapp_service"), "WHATSAPP_TOKEN", "")),
+            "phone_id_configured": bool(getattr(__import__("whatsapp_service"), "PHONE_NUMBER_ID", "")),
             "gemini_api_key_configured": bool(os.environ.get("GEMINI_API_KEY") or getattr(__import__("ai_engine"), "API_KEY", "")),
             "admin_api_key_configured": bool(ADMIN_API_KEY)
         },
