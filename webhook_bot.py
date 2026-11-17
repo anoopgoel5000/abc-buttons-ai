@@ -14,151 +14,101 @@ except ImportError:
 
 from ai_engine import analyze_button_or_fabric_image, SAMPLE_CATALOG, simulate_buyer_chat
 from whatsapp_service import (
-    send_whatsapp_text,
-    send_whatsapp_image,
+    send_whatsapp_text as _raw_send_whatsapp_text,
+    send_whatsapp_image as _raw_send_whatsapp_image,
     download_whatsapp_media
 )
+import hmac
+import hashlib
+import db
 
 app = FastAPI(title="ABC Buttons WhatsApp Webhook Server")
 
 VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "abc_buttons_secret_2026")
+META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "abc_admin_secure_key_2026")
 CAT_DIR = os.path.join(os.path.dirname(__file__), "catalog_images")
-
-# Persistent Live Inquiries store for software dashboard
 DS_PATH = os.path.join(os.path.dirname(__file__), "data_store.json")
 
-def load_live_inquiries():
-    if os.path.exists(DS_PATH):
-        try:
-            with open(DS_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("live_whatsapp_inquiries", [])
-        except Exception:
-            pass
-    return []
+# ----------------- SECURITY & AUDIT HELPERS (Requirements 7, 8, 9) -----------------
 
-live_whatsapp_inquiries = load_live_inquiries()
+def verify_webhook_signature(body_bytes: bytes, signature_header: str) -> bool:
+    """Verifies HMAC-SHA256 signature from Meta Cloud API."""
+    if not META_APP_SECRET:
+        # Development / test mode fallback if secret not set
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected_hash = signature_header.split("sha256=", 1)[1]
+    calculated_hash = hmac.new(META_APP_SECRET.encode("utf-8"), body_bytes, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected_hash, calculated_hash)
 
-# In-memory customer context session store with persistent rehydration (Scenario H)
-buyer_sessions = {}
-processed_msg_ids = set()
-received_events = []
+def verify_admin_auth(request: Request) -> bool:
+    """Verifies API key for administrative / destructive operations."""
+    key_hdr = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    key_query = request.query_params.get("api_key")
+    return bool((key_hdr and key_hdr == ADMIN_API_KEY) or (key_query and key_query == ADMIN_API_KEY))
+
+# ----------------- OUTBOUND DELIVERY & PRODUCT TRACKING (Requirements 2 & 12) -----------------
+
+def send_whatsapp_text(to_phone: str, message_text: str) -> dict:
+    """Tracked outbound text messaging with delivery logging."""
+    res = _raw_send_whatsapp_text(to_phone, message_text)
+    wamid = None
+    if isinstance(res, dict):
+        msgs = res.get("data", {}).get("messages", [])
+        if msgs and isinstance(msgs, list):
+            wamid = msgs[0].get("id")
+    status = "SENT" if (isinstance(res, dict) and res.get("success", True)) else "FAILED"
+    err = str(res.get("error", "")) if isinstance(res, dict) else ""
+    db.log_outbound_delivery(wamid or "", to_phone, "text", message_text, status, err)
+    return res
+
+def send_whatsapp_image(to_phone: str, img_bytes: bytes, caption: str = "", sku: str = "", product_name: str = "", size_opts: str = "") -> dict:
+    """Tracked outbound image messaging with WAMID-to-SKU mapping."""
+    res = _raw_send_whatsapp_image(to_phone, img_bytes, caption)
+    wamid = None
+    if isinstance(res, dict):
+        msgs = res.get("data", {}).get("messages", [])
+        if msgs and isinstance(msgs, list):
+            wamid = msgs[0].get("id")
+    status = "SENT" if (isinstance(res, dict) and res.get("success", True)) else "FAILED"
+    err = str(res.get("error", "")) if isinstance(res, dict) else ""
+    db.log_outbound_delivery(wamid or "", to_phone, "image", caption, status, err)
+    if wamid and sku:
+        db.record_outbound_product(wamid, to_phone, sku, product_name, size_opts, "")
+    return res
+
+# ----------------- SESSION PERSISTENCE & CHAT EVENT LOGGING (Requirements 1, 5, 10) -----------------
 
 def get_buyer_session(phone: str) -> dict:
-    clean_p = re.sub(r'\D', '', str(phone)) if phone else ""
-    sess_key = clean_p[-10:] if len(clean_p) >= 10 else clean_p
-    
-    if sess_key not in buyer_sessions:
-        sess = {
-            "has_photo": False,
-            "matched_sku": None,
-            "matched_name": None,
-            "matched_size": None,
-            "quantity": None,
-            "has_address": False,
-            "history_count": 0,
-            "waiting_for_similar_permission": False,
-            "waiting_for_similar_approval": False,
-            "suggested_alternatives": [],
-            "waiting_for_custom_mfg_qty": False,
-            "last_active_sku": None
-        }
-        # Rehydrate from persistent live inquiries (survives Render restart / sleep)
-        try:
-            inqs = load_live_inquiries()
-            for inq in inqs:
-                inq_p = re.sub(r'\D', '', str(inq.get("phone", "")))
-                if inq_p and (inq_p == clean_p or (len(clean_p) >= 10 and inq_p.endswith(clean_p[-10:]))):
-                    if inq.get("matched_sku") and inq.get("matched_sku") != "Inquiry":
-                        sess["matched_sku"] = inq.get("matched_sku")
-                        sess["matched_name"] = inq.get("matched_name")
-                        sess["matched_size"] = inq.get("matched_size")
-                        sess["last_active_sku"] = inq.get("matched_sku")
-                        sess["has_photo"] = True
-                    if inq.get("quantity"):
-                        sess["quantity"] = inq.get("quantity")
-                    break
-        except Exception as e:
-            print(f"Error rehydrating session for {phone}: {e}")
-            
-        buyer_sessions[sess_key] = sess
-    return buyer_sessions[sess_key]
+    """ACID persistent buyer session from transactional SQLite."""
+    return db.get_session_db(phone)
+
+def save_buyer_session(phone: str, session: dict):
+    """Save session to transactional SQLite."""
+    db.save_session_db(phone, session)
+
+def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text: str, photo_b64: str = None, sku: str = None, size: str = None, qty: int = None):
+    """Transactional chat logging with atomic dual-sync to data_store.json."""
+    db.sync_chat_event_db(phone, buyer_name, sender, msg_type, text, photo_b64, sku, size, qty)
+
+def load_live_inquiries():
+    """Retrieve inquiries from database."""
+    with db.get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM live_inquiries ORDER BY updated_at DESC LIMIT 50")
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["chat_messages"] = json.loads(r["chat_messages"]) if r.get("chat_messages") else []
+        return rows
 
 def save_live_inquiries():
-    try:
-        ds = {}
-        if os.path.exists(DS_PATH):
-            with open(DS_PATH, "r", encoding="utf-8") as f:
-                ds = json.load(f)
-        ds["live_whatsapp_inquiries"] = live_whatsapp_inquiries[:50]
-        with open(DS_PATH, "w", encoding="utf-8") as f:
-            json.dump(ds, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print(f"Error saving inquiries: {e}")
+    """Atomic export to data_store.json for backward compatibility."""
+    db.export_to_data_store_json()
 
-
-def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text: str, photo_b64: str = None, sku: str = None):
-    try:
-        import datetime
-        t_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        time_short = datetime.datetime.now().strftime("%H:%M")
-        clean_p = re.sub(r'\D', '', str(phone)) if phone else ""
-        sess_key = clean_p[-10:] if len(clean_p) >= 10 else clean_p
-        sess = buyer_sessions.get(sess_key, {})
-        
-        entry = next((x for x in live_whatsapp_inquiries if re.sub(r'\D', '', str(x.get("phone", ""))).endswith(sess_key)), None)
-        if not entry:
-            entry = {
-                "id": f"inq_{phone}",
-                "timestamp": t_now,
-                "buyer_name": buyer_name or "Buyer",
-                "phone": phone,
-                "photo_b64": photo_b64 if sender == "buyer" and photo_b64 else "",
-                "matched_sku": sku or sess.get("matched_sku") or "Inquiry",
-                "matched_name": (get_item_by_sku(sku or sess.get("matched_sku")) or {}).get("name", "Button Inquiry"),
-                "matched_size": sess.get("matched_size") or (get_item_by_sku(sku or sess.get("matched_sku")) or {}).get("size_ligne", ""),
-                "quantity": sess.get("quantity") or 0,
-                "status": f"Quotation Requested ({sess.get('quantity')} Gross)" if sess.get("quantity") else "Chat Active",
-                "notes": text if msg_type == "text" else "",
-                "chat_messages": []
-            }
-            live_whatsapp_inquiries.insert(0, entry)
-        else:
-            if entry in live_whatsapp_inquiries:
-                live_whatsapp_inquiries.remove(entry)
-            live_whatsapp_inquiries.insert(0, entry)
-            entry["timestamp"] = t_now
-            if buyer_name and buyer_name != "Sir":
-                entry["buyer_name"] = buyer_name
-            if photo_b64 and sender == "buyer":
-                entry["photo_b64"] = photo_b64
-            active_sku = sku or sess.get("matched_sku")
-            if active_sku and active_sku != "Inquiry":
-                entry["matched_sku"] = active_sku
-                m_item = get_item_by_sku(active_sku)
-                if m_item:
-                    entry["matched_name"] = m_item.get("name", entry.get("matched_name", ""))
-            if sess.get("matched_size"):
-                entry["matched_size"] = sess.get("matched_size")
-            if sess.get("quantity"):
-                entry["quantity"] = sess.get("quantity")
-                entry["status"] = f"Quotation Requested ({sess.get('quantity'):,} Gross)"
-
-        if "chat_messages" not in entry or not isinstance(entry["chat_messages"], list):
-            entry["chat_messages"] = []
-            
-        entry["chat_messages"].append({
-            "sender": sender,
-            "sender_name": buyer_name if sender == "buyer" else "ABC Buttons Assistant",
-            "type": msg_type,
-            "text": text,
-            "photo_b64": photo_b64,
-            "sku": sku,
-            "time": time_short
-        })
-        save_live_inquiries()
-    except Exception as e:
-        print(f"Error logging chat: {e}")
+live_whatsapp_inquiries = load_live_inquiries()
+received_events = []
 
 
 def get_item_by_sku(sku: str):
@@ -192,19 +142,34 @@ async def process_incoming_whatsapp_message(value: dict):
         
     msg = messages[0]
     msg_id = msg.get("id")
-    if msg_id in processed_msg_ids:
-        return
-    processed_msg_ids.add(msg_id)
-    if len(processed_msg_ids) > 1000:
-        processed_msg_ids.clear()
-        
     from_phone = msg.get("from")
+    
+    # Requirement 6: Persistent Transactional Message Deduplication
+    if db.is_message_processed(msg_id, from_phone):
+        print(f"Skipping already-processed message {msg_id}")
+        return
+        
     msg_type = msg.get("type")
     first_name = contact_name.split()[0] if contact_name and contact_name != "Buyer" else "Sir"
-    salutation = f"{first_name} ji" if first_name not in ["Sir"] else "Sir"
+    salutation = f"{first_name} ji" if first_name not in ["Sir", "sir"] else "sir"
     
+    # Requirement 1 & 5: ACID Session State Retrieval
     session = get_buyer_session(from_phone)
-    session["history_count"] += 1
+    session["contact_name"] = contact_name
+    session["history_count"] = session.get("history_count", 0) + 1
+    
+    # Requirement 4: WhatsApp Quoted Reply Resolution via WAMID
+    context_id = msg.get("context", {}).get("id")
+    if context_id:
+        quoted_prod = db.resolve_quoted_sku(context_id, from_phone)
+        if quoted_prod:
+            session["matched_sku"] = quoted_prod["sku"]
+            session["matched_name"] = quoted_prod["product_name"]
+            session["has_photo"] = True
+            session["last_active_sku"] = quoted_prod["sku"]
+            if quoted_prod.get("size_options") and not session.get("matched_size"):
+                session["matched_size"] = quoted_prod.get("size_options")
+            print(f"🎯 Resolved quoted reply {context_id} -> {quoted_prod['sku']}")
     
     # ---------------- CASE 1: BUYER SENT A PHOTO ----------------
     if msg_type == "image":
@@ -334,6 +299,7 @@ async def process_incoming_whatsapp_message(value: dict):
                     f"Aapki {session['quantity']} Gross requirement ke according hum quotation prepare kar rahe hain."
                 )
             send_whatsapp_text(from_phone, cta_text)
+            save_buyer_session(from_phone, session)
             print(f"📤 Sent Exact Match and Quantity Question to {from_phone}")
             
         except Exception as e:
@@ -601,7 +567,9 @@ async def process_incoming_whatsapp_message(value: dict):
                 f"Ji {salutation}, size update kar diya hai: *{new_size}* (pehle {old_size} tha).\n\n"
                 f"Design (*{p_name}*) aur quantity (*{p_qty}*) safe hai. Hum updated size ke according Sales Team se availability check kar rahe hain."
             )
+            save_buyer_session(from_phone, session)
             send_whatsapp_text(from_phone, size_update_msg)
+            log_chat_event(from_phone, contact_name, "bot", "text", size_update_msg, size=new_size)
             return
 
         # 18.3 DYNAMIC REQUIREMENT UPDATE: UNCLEAR COLOUR CHANGE (e.g., "colour bhi change kar dena")
@@ -879,7 +847,7 @@ async def process_incoming_whatsapp_message(value: dict):
                         f"• Standard Rate: *₹{item.get('rate_per_gross', 0)} / Gross*\n\n"
                         f"100% genuine export quality stock Central Godown, New Delhi me available hai."
                     )
-                    send_whatsapp_image(from_phone, p_img_bytes, best_caption)
+                    send_whatsapp_image(from_phone, p_img_bytes, best_caption, sku=item['sku'], product_name=item['name'], size_opts=item.get('size_ligne', ''))
                     log_chat_event(from_phone, contact_name, "bot", "image", best_caption, sku=item['sku'])
                     await asyncio.sleep(1.2)
                     
@@ -889,6 +857,7 @@ async def process_incoming_whatsapp_message(value: dict):
                 )
                 send_whatsapp_text(from_phone, reply_text)
                 log_chat_event(from_phone, contact_name, "bot", "text", reply_text)
+                save_buyer_session(from_phone, session)
                 return
 
         # Check Option selection
@@ -972,64 +941,33 @@ async def process_incoming_whatsapp_message(value: dict):
 
             active_sku = session.get("matched_sku") or session.get("last_active_sku")
 
-            # Scenario A / D: Active product exists OR photo was shared
+            # Scenario A / D / Acceptance Test: Active product exists OR photo was shared
             if active_sku or session.get("has_photo"):
                 item = get_item_by_sku(active_sku) if active_sku else None
                 item_name = item.get("name") if item else session.get("matched_name", "selected button")
+                clean_name = re.sub(r'\s*\([^)]*bulk[^)]*\)', '', item_name, flags=re.IGNORECASE).strip()
                 size_val = session.get("matched_size")
-                size_str = f" in *{size_val}*" if size_val else ""
+                size_phrase = f" mein {size_val} size" if size_val else ""
 
-                stock_gross = item.get("stock_gross", 0) if item else 0
-                rate = item.get("rate_per_gross", 0) if item else 0
+                session["quantity"] = qty
+                session["matched_sku"] = active_sku
+                session["matched_name"] = clean_name
+                save_buyer_session(from_phone, session)
 
-                # Update live inquiry in data_store.json so Tab 5 1-Click Quote is updated
-                try:
-                    import datetime
-                    ds_path = os.path.join(os.path.dirname(__file__), "data_store.json")
-                    if os.path.exists(ds_path):
-                        with open(ds_path, "r", encoding="utf-8") as fp:
-                            ds = json.load(fp)
-                        ds["latest_whatsapp_inquiry"] = {
-                            "buyer_name": contact_name,
-                            "phone": from_phone,
-                            "sku": active_sku or "ABC-136",
-                            "size": size_val or "",
-                            "qty_gross": qty,
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                        # Also update matching inquiry in live_whatsapp_inquiries
-                        clean_p = re.sub(r'\D', '', str(from_phone))
-                        for inq in ds.get("live_whatsapp_inquiries", []):
-                            inq_p = re.sub(r'\D', '', str(inq.get("phone", "")))
-                            if inq_p and (inq_p == clean_p or inq_p.endswith(clean_p[-10:])):
-                                inq["quantity"] = qty
-                                if size_val:
-                                    inq["matched_size"] = size_val
-                                if active_sku:
-                                    inq["matched_sku"] = active_sku
-                                    inq["matched_name"] = item_name
-                                inq["status"] = f"Quotation Requested ({qty:,} Gross)"
-                                break
-                        with open(ds_path, "w", encoding="utf-8") as fp:
-                            json.dump(ds, fp, indent=2)
-                except Exception as e:
-                    print(f"Error updating persistent inquiry: {e}")
-
-                # Real stock details without inventing false commitments
-                stock_line = f"• Godown Ready Stock: *{stock_gross:,} Gross*\n• Standard Rate: *₹{rate} / Gross*\n\n" if item else ""
+                # Strict Acceptance Test Formulated Reply:
+                # "Ji sir, ABC-136 White Pearl Agoya Shell Button mein 18L size aur 200 Gross ki aapki requirement note kar li hai. Current stock availability aur quotation Sales Team se verify karwa rahe hain."
                 reply = (
-                    f"Ji {salutation}, aapki *{item_name}*{size_str} ke liye *{qty:,} Gross* "
-                    f"({qty*144:,} Pcs) ki requirement note kar li hai.\n\n"
-                    f"{stock_line}"
-                    f"Hum iska official Proforma Quotation prepare kar rahe hain."
+                    f"Ji {salutation}, {clean_name}{size_phrase} aur {qty:,} Gross ki aapki requirement note kar li hai. "
+                    f"Current stock availability aur quotation Sales Team se verify karwa rahe hain."
                 )
                 send_whatsapp_text(from_phone, reply)
-                log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=active_sku)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply, sku=active_sku, size=size_val, qty=qty)
                 return
             else:
                 reply = "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
                 send_whatsapp_text(from_phone, reply)
                 log_chat_event(from_phone, contact_name, "bot", "text", reply)
+                save_buyer_session(from_phone, session)
                 return
 
         # Courtesy & Acknowledgement
@@ -1133,8 +1071,16 @@ def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
+    body_bytes = await request.body()
+    sig_header = request.headers.get("X-Hub-Signature-256", "")
+    
+    # Requirement 7: Meta Webhook HMAC-SHA256 Signature Verification
+    if not verify_webhook_signature(body_bytes, sig_header):
+        print("❌ Meta Webhook signature verification failed. Unauthorized request.")
+        return JSONResponse(status_code=403, content={"error": "Invalid signature"})
+
     try:
-        payload = await request.json()
+        payload = json.loads(body_bytes.decode("utf-8"))
         import datetime
         t_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         received_events.append({"time": t_str, "payload": payload})
@@ -1154,17 +1100,22 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
 
 @app.get("/api/live_inquiries")
 def get_live_inquiries():
+    inqs = load_live_inquiries()
     return JSONResponse(content={
         "status": "success",
-        "total": len(live_whatsapp_inquiries),
-        "inquiries": live_whatsapp_inquiries
+        "total": len(inqs),
+        "inquiries": inqs
     })
 
 @app.post("/api/clear_inquiries")
-def clear_live_inquiries():
-    global live_whatsapp_inquiries
-    live_whatsapp_inquiries = []
-    save_live_inquiries()
+def clear_live_inquiries(request: Request):
+    # Requirements 8 & 9: Restrict Destructive API Operations
+    if not verify_admin_auth(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized. Valid X-API-Key required."})
+        
+    with db.get_db_connection() as conn:
+        conn.execute("DELETE FROM live_inquiries;")
+    db.export_to_data_store_json()
     return JSONResponse(content={"status": "cleared"})
 
 @app.get("/history")
