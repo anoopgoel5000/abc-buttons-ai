@@ -848,6 +848,30 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
     is_4_hole = "4-hole" in holes or "4 hole" in holes or "four" in holes or "4-hole" in raw_text
     is_2_hole = "2-hole" in holes or "2 hole" in holes or "two" in holes or "2" in holes or "2-hole" in raw_text
     
+    # White / Light vs Dark Color Disambiguation (STRICT - Prevents matching white samples to black buttons!)
+    is_white_tone = any(w in color for w in ["white", "cream", "ivory", "off-white", "light", "pale", "pearl white", "natural white", "iridescent white"]) or any(w in finish for w in ["white", "bright white", "pearl luster", "natural white river shell", "saucer rim", "white polish"])
+    is_dark_tone = any(d in color for d in ["black", "charcoal", "dark grey", "gunmetal", "black lip", "jet black", "dark"]) and not is_white_tone
+
+    # Flagship Master SKU: ABC-139 (Natural White River Shell, 2-Hole with Raised Saucer Rim)
+    # If the button is white/cream/natural river shell with 2 holes or raised saucer rim: MUST BE ABC-139!
+    if is_white_tone or ("shell" in raw_text and not is_dark_tone and not any(h in raw_text for h in ["turquoise", "pink", "violet", "caramel", "gold", "amber"])):
+        if is_2_hole or any(k in raw_text for k in ["river", "saucer", "raised rim", "recessed", "rim"]):
+            parsed["match_status"] = "MATCH_FOUND"
+            parsed["best_match_sku"] = "ABC-139"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: Natural White River Shell Button (2-Hole with Raised Outer Rim / Saucer Rim)."
+            parsed["alternative_sku"] = "ABC-136"
+            parsed["alternative_reason"] = "ABC-136 is high-volume white agoya shell available in both 2-hole and 4-hole."
+            return _finalize_draft(parsed)
+        elif is_4_hole or any(k in raw_text for k in ["agoya", "bulk", "heap", "pile", "shirt", "14l", "18l"]):
+            parsed["match_status"] = "MATCH_FOUND"
+            parsed["best_match_sku"] = "ABC-136"
+            parsed["match_confidence"] = 100
+            parsed["match_reason"] = "Deterministic Lock: White Pearl Agoya Shell Button in Bulk Stock (SKU ABC-136)."
+            parsed["alternative_sku"] = "ABC-139"
+            parsed["alternative_reason"] = "ABC-139 is natural white river shell with raised saucer rim."
+            return _finalize_draft(parsed)
+
     # Dyed / Specific hues
     if "turquoise" in raw_text or "teal" in raw_text or "blue" in raw_text:
         parsed["match_status"] = "MATCH_FOUND"
@@ -867,8 +891,8 @@ def apply_deterministic_sku_lock(parsed: dict) -> dict:
         parsed["alternative_reason"] = "ABC-139 is pure natural white river shell."
         return _finalize_draft(parsed)
 
-    # Charcoal / Smoky / Gunmetal
-    if "gunmetal" in raw_text or "smoky" in raw_text or "charcoal" in raw_text or "black lip" in raw_text or "dark grey" in raw_text:
+    # Charcoal / Smoky / Gunmetal - Strictly requires genuine dark color tone!
+    if is_dark_tone and any(k in raw_text for k in ["gunmetal", "smoky", "charcoal", "black lip", "dark grey", "black"]):
         parsed["match_status"] = "MATCH_FOUND"
         if is_4_hole:
             parsed["best_match_sku"] = "ABC-141"

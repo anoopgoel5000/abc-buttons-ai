@@ -2,6 +2,7 @@ import streamlit as st
 import datetime
 import json
 import os
+import re
 import urllib.parse
 import importlib
 import pandas as pd
@@ -580,6 +581,56 @@ st.markdown("""
         font-weight: 600 !important;
         border: 1.5px solid #CBD5E1 !important;
     }
+
+    /* High Contrast & Colorful Badges for ABC Buttons OS */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px !important;
+        background: #F8FAFC !important;
+        padding: 8px 12px !important;
+        border-radius: 12px !important;
+        border: 1px solid #E2E8F0 !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 16px !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+        font-size: 13.5px !important;
+        color: #475569 !important;
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #1E3A8A !important;
+        color: #FFFFFF !important;
+        border: 1px solid #1E3A8A !important;
+        box-shadow: 0 4px 10px rgba(30, 58, 138, 0.25) !important;
+    }
+    .badge-green {
+        background: #DCFCE7 !important;
+        color: #15803D !important;
+        padding: 4px 12px !important;
+        border-radius: 20px !important;
+        font-weight: 800 !important;
+        border: 1.5px solid #86EFAC !important;
+    }
+    .badge-blue {
+        background: #EFF6FF !important;
+        color: #1D4ED8 !important;
+        padding: 4px 12px !important;
+        border-radius: 20px !important;
+        font-weight: 800 !important;
+        border: 1.5px solid #BFDBFE !important;
+    }
+    .badge-amber {
+        background: #FEF3C7 !important;
+        color: #B45309 !important;
+        padding: 4px 12px !important;
+        border-radius: 20px !important;
+        font-weight: 800 !important;
+        border: 1.5px solid #FDE68A !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -705,75 +756,317 @@ if "quotation_history" not in st.session_state:
 
 # Navigation Tabs
 tabs = st.tabs([
-    "📸 1. Visual Matcher (Real Buyer Photos)", 
-    "📂 2. Catalog & Image Gallery",
-    "🏍️ 3. Salesman Logger", 
-    "📊 4. Sample Pipeline & Follow-Up", 
+    "📥 1. WhatsApp Customer Inbox",
+    "🔍 2. AI Button Scanner", 
+    "📂 3. Catalog & Stock Gallery",
+    "🏍️ 4. Salesman Logger", 
     "🧾 5. 1-Click Quotation", 
-    "💳 6. Payment Reminder",
-    "💬 7. WhatsApp Live Simulator (Buyer & Salesman)"
+    "📊 6. Sample Pipeline", 
+    "💳 7. Payment Reminder"
 ])
 
 # ----------------- TAB 1: VISUAL BUTTON MATCHER -----------------
 with tabs[0]:
-    st.subheader("🔍 Test Buyer Inquiries with Real Photos")
-    st.caption("यहाँ आपके द्वारा भेजी गई असली बटनों की तस्वीरों से टेस्ट करें कि जब कोई बायर WhatsApp पर फोटो भेजता है, तो AI कैसे 3 सेकंड में स्टॉक व सही SKU ढूंढता है:")
+    # ---------------- TAB 1: WHATSAPP CUSTOMER INBOX (PURE & CLEAN) ----------------
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); 
+                padding: 22px 28px; border-radius: 14px; margin-bottom: 20px; 
+                box-shadow: 0 4px 15px rgba(15, 23, 42, 0.15); border-left: 6px solid #3b82f6;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <h2 style="color: #ffffff !important; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">
+                    📥 WhatsApp Customer Inbox & Live Inquiries
+                </h2>
+                <p style="color: #93c5fd !important; margin: 5px 0 0 0; font-size: 14px;">
+                    व्हाट्सएप से आने वाली हर ग्राहक की असली फोटो, बटन का प्रकार और मांगी गई क्वांटिटी यहाँ स्वतः दर्ज होती है।
+                </p>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);">
+                <span style="color: #4ade80; font-weight: 700; font-size: 13px;">🟢 Live Meta API Connected</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ---------------- LIVE WHATSAPP INCOMING INQUIRIES FEED ----------------
-    with st.expander("📥 Live WhatsApp Customer Inquiries (WhatsApp से आई असली बायर फोटोज़ व ऑर्डर्स)", expanded=True):
-        col_hdr, col_btn = st.columns([3, 1])
-        with col_hdr:
-            inqs_count = len(st.session_state.get('live_whatsapp_inquiries', []))
-            st.markdown(f"**Live Incoming Customer Feed:** `{inqs_count} Customer Inquiries Stored`")
-        with col_btn:
-            if st.button("🔄 Sync with WhatsApp", key="sync_wa_tab1_btn", help="Fetches real-time buyer photos from Render cloud"):
-                with st.spinner("WhatsApp से नया बायर डेटा व फोटोज़ डाउनलोड हो रही हैं..."):
-                    cnt = sync_live_whatsapp_inquiries()
-                    if cnt > 0:
-                        st.success(f"✅ {cnt} ग्राहक(ों) का डेटा व असली फोटोज़ डाउनलोड हो गईं!")
-                        st.rerun()
+    # Top Metrics & Sync Bar
+    c_m1, c_m2, c_m3, c_btn = st.columns([1.2, 1.2, 1.4, 1.2])
+    wa_inqs_all = st.session_state.get('live_whatsapp_inquiries', [])
+    with c_m1:
+        st.markdown(f"""
+        <div style="background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 12px 16px; text-align: center;">
+            <span style="color: #1e40af; font-size: 12px; font-weight: 700; text-transform: uppercase;">Total Customers</span><br>
+            <span style="color: #1e3a8a; font-size: 24px; font-weight: 800;">{len(wa_inqs_all)} Logged</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_m2:
+        photo_count = sum(1 for x in wa_inqs_all if x.get('photo_b64'))
+        st.markdown(f"""
+        <div style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 12px 16px; text-align: center;">
+            <span style="color: #166534; font-size: 12px; font-weight: 700; text-transform: uppercase;">Real Photos</span><br>
+            <span style="color: #15803d; font-size: 24px; font-weight: 800;">{photo_count} Attached</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_m3:
+        total_qty = sum(x.get('quantity', 0) for x in wa_inqs_all)
+        st.markdown(f"""
+        <div style="background: #fefce8; border: 1.5px solid #fef08a; border-radius: 10px; padding: 12px 16px; text-align: center;">
+            <span style="color: #854d0e; font-size: 12px; font-weight: 700; text-transform: uppercase;">Total Quantity</span><br>
+            <span style="color: #a16207; font-size: 24px; font-weight: 800;">{total_qty:,} Gross</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_btn:
+        st.write("")
+        if st.button("🔄 Sync with WhatsApp", key="sync_wa_top_btn", help="Fetches real-time buyer photos from Render cloud server", type="primary", use_container_width=True):
+            with st.spinner("WhatsApp से नया बायर डेटा व फोटोज़ डाउनलोड हो रही हैं..."):
+                cnt = sync_live_whatsapp_inquiries()
+                if cnt > 0:
+                    st.success(f"✅ {cnt} ग्राहक(ों) का डेटा व असली फोटोज़ डाउनलोड हो गईं!")
+                    st.rerun()
+                else:
+                    st.info("सभी रिकॉर्ड्स पहले से ही अप-टू-डेट हैं।")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ---------------- LIVE WHATSAPP CONVERSATION STREAM (TOP SECTION) ----------------
+    if wa_inqs_all:
+        with st.container():
+            st.markdown("### 💬 Live WhatsApp Customer Chat Stream (रियल-टाइम बातचीत)")
+            st.caption("सॉफ्टवेयर ऑपरेटर यहाँ देख सकते हैं कि किस ग्राहक से क्या बातचीत चल रही है:")
+            
+            c_sel1, c_sel2 = st.columns([3, 1])
+            with c_sel1:
+                buyer_labels = [f"👤 {x.get('buyer_name', 'Customer')} (+{x.get('phone', '')}) — SKU: {x.get('matched_sku', 'Inquiry')}" for x in wa_inqs_all]
+                selected_label = st.selectbox("ग्राहक चुनें:", buyer_labels, index=0, key="live_chat_buyer_selector")
+                sel_idx = buyer_labels.index(selected_label)
+                active_inq = wa_inqs_all[sel_idx]
+            with c_sel2:
+                st.write("")
+                if st.button("🔄 Refresh Live Chat", key="btn_top_refresh_chat", use_container_width=True):
+                    sync_live_whatsapp_inquiries()
+                    st.rerun()
+            
+            # Show live conversation box
+            st.info(f"🟢 **Active Chat with {active_inq.get('buyer_name', 'Customer')}** (+{active_inq.get('phone', '')}) • Last Update: {active_inq.get('timestamp', 'Today')}")
+            
+            # Message container
+            chat_box = st.container(height=380, border=True)
+            with chat_box:
+                msgs = active_inq.get("chat_messages", [])
+                if not msgs:
+                    p_time = active_inq.get("timestamp", "Today")
+                    if " " in p_time:
+                        p_time = p_time.split(" ")[1][:5]
+                    msgs = [
+                        {
+                            "sender": "buyer",
+                            "sender_name": active_inq.get("buyer_name", "Customer"),
+                            "type": "image" if active_inq.get("photo_b64") else "text",
+                            "text": active_inq.get("notes") or "Namaste, ye button aapke paas ready stock me mil jayega?",
+                            "photo_b64": active_inq.get("photo_b64"),
+                            "time": p_time
+                        },
+                        {
+                            "sender": "bot",
+                            "sender_name": "ABC Buttons AI Bot",
+                            "type": "image" if active_inq.get("matched_sku") and active_inq.get("matched_sku") != "Custom / Non-Catalog" else "text",
+                            "sku": active_inq.get("matched_sku"),
+                            "text": f"Ji sir, aapke share kiye hue sample ka exact matching stock hamare paas available hai: *{active_inq.get('matched_name', 'Catalog Button')}*.\n\nAapko kitni quantity chahiye?",
+                            "time": p_time
+                        }
+                    ]
+                    if active_inq.get("quantity"):
+                        msgs.append({
+                            "sender": "buyer",
+                            "sender_name": active_inq.get("buyer_name", "Customer"),
+                            "type": "text",
+                            "text": f"{active_inq.get('quantity')} Gross",
+                            "time": p_time
+                        })
+                        msgs.append({
+                            "sender": "bot",
+                            "sender_name": "ABC Buttons AI Bot",
+                            "type": "text",
+                            "text": f"Ji {active_inq.get('buyer_name', 'Sir')}, aapki {active_inq.get('quantity')} Gross ({active_inq.get('quantity')*144:,} Pieces) ki requirement note kar li hai. Hum turant best quotation taiyar kar rahe hain.",
+                            "time": p_time
+                        })
+                
+                for m in msgs:
+                    s = m.get("sender", "buyer")
+                    if s == "buyer":
+                        with st.chat_message("user", avatar="👤"):
+                            st.markdown(f"**{m.get('sender_name', 'Customer')}** &nbsp; <small style='color: #64748b;'>{m.get('time', '')}</small>", unsafe_allow_html=True)
+                            if m.get("photo_b64"):
+                                try:
+                                    import base64
+                                    from io import BytesIO
+                                    st.image(BytesIO(base64.b64decode(m["photo_b64"])), caption="Customer Sample Photo", width=220)
+                                except Exception:
+                                    pass
+                            if m.get("text"):
+                                st.write(m.get("text"))
                     else:
-                        st.info("सभी रिकॉर्ड्स पहले से ही अप-टू-डेट हैं।")
-        
-        wa_inqs = st.session_state.get("live_whatsapp_inquiries", [])
-        if not wa_inqs:
-            st.info("💡 अभी तक इस सिस्टम में कोई नया रिकॉर्ड सेव नहीं है। जैसे ही कोई ग्राहक आपके WhatsApp नंबर पर फोटो या मैसेज भेजेगा, 'Sync with WhatsApp' बटन दबाते ही उसकी असली फोटो और पूरा विवरण यहाँ दिखाई देने लगेगा!")
-        else:
-            for inq_i, inq in enumerate(wa_inqs):
-                with st.container():
-                    st.markdown("""<hr style="margin: 8px 0; border: none; border-top: 1px solid #e2e8f0;">""", unsafe_allow_html=True)
-                    c_card1, c_card2, c_card3 = st.columns([1.2, 2.5, 1.3])
-                    with c_card1:
-                        p_b64 = inq.get("photo_b64")
-                        if p_b64:
-                            try:
-                                import base64
-                                from io import BytesIO
-                                st.image(BytesIO(base64.b64decode(p_b64)), caption="Buyer's Real Photo", use_container_width=True)
-                            except Exception:
-                                st.write("📷 [Photo Available]")
-                        else:
-                            st.write("💬 Text Inquiry")
-                    with c_card2:
-                        st.markdown(f"**👤 {inq.get('buyer_name', 'Customer')}** (`+{inq.get('phone', '')}`)")
-                        st.markdown(f"⏱️ *Received:* `{inq.get('timestamp', '')}`")
-                        st.markdown(f"🔘 **Matched Button:** `{inq.get('matched_sku', 'N/A')}` - {inq.get('matched_name', '')}")
-                        qty_show = f"**{inq.get('quantity')} Gross** ({inq.get('quantity', 0)*144:,} Pcs)" if inq.get('quantity') else "*Awaiting Quantity Confirmation*"
-                        st.markdown(f"📦 **Requested Qty:** {qty_show}")
-                        st.caption(f"Status: `{inq.get('status', 'Received')}`")
-                    with c_card3:
-                        st.write("")
-                        st.write("")
-                        if st.button(f"🧾 1-Click Quote", key=f"btn_quote_wa_{inq_i}"):
-                            st.session_state["preset_quote_buyer"] = inq.get('buyer_name', '')
-                            st.session_state["preset_quote_phone"] = inq.get('phone', '')
-                            st.session_state["preset_quote_sku"] = inq.get('matched_sku', '')
-                            st.session_state["preset_quote_qty"] = inq.get('quantity') or 200
-                            st.success(f"✅ {inq.get('buyer_name')} का डेटा Tab 5 (1-Click Quotation) में लोड हो गया!")
-    
-    st.markdown("---")
+                        with st.chat_message("assistant", avatar="🤖"):
+                            st.markdown(f"**ABC Buttons Assistant** &nbsp; <small style='color: #64748b;'>{m.get('time', '')}</small>", unsafe_allow_html=True)
+                            if m.get("sku") and m.get("sku") != "Custom / Non-Catalog":
+                                sku_code = m["sku"]
+                                c_img = os.path.join(IMG_DIR, f"{sku_code}.jpg")
+                                if os.path.exists(c_img):
+                                    st.image(c_img, caption=f"Stock Matched: {sku_code}", width=220)
+                            if m.get("text"):
+                                st.write(m.get("text"))
 
+            # Quick Action Bar
+            c_act1, c_act2 = st.columns([1, 1])
+            with c_act1:
+                if st.button("🧾 1-Click Quote for this Customer (Tab 5)", key="btn_top_chat_quote", type="primary", use_container_width=True):
+                    st.session_state["preset_quote_buyer"] = active_inq.get('buyer_name', '')
+                    st.session_state["preset_quote_phone"] = active_inq.get('phone', '')
+                    st.session_state["preset_quote_sku"] = active_inq.get('matched_sku', '')
+                    st.session_state["preset_quote_qty"] = active_inq.get('quantity') or 200
+                    st.success(f"✅ {active_inq.get('buyer_name')} का डेटा लोड हो गया! ऊपर Tab 5 पर जाएँ।")
+            with c_act2:
+                clean_ph = re.sub(r'\D', '', str(active_inq.get('phone', '')))
+                if clean_ph:
+                    st.markdown(f"""
+                    <a href="https://wa.me/{clean_ph}" target="_blank" style="display: block; text-align: center; background: #25D366; color: white; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; font-size: 14px;">
+                        💬 Open Direct WhatsApp Chat
+                    </a>
+                    """, unsafe_allow_html=True)
+            st.markdown("---")
+
+    # Search & Filter Input
+    search_q = st.text_input("🔍 ग्राहक के नाम, फ़ोन नंबर या बटन SKU से खोजें:", placeholder="उदा. Anoop, 93157, या ABC-136...")
     
+    # Filter inquiries
+    display_inqs = []
+    for x in wa_inqs_all:
+        t_str = f"{x.get('buyer_name', '')} {x.get('phone', '')} {x.get('matched_sku', '')} {x.get('matched_name', '')}".lower()
+        if not search_q or search_q.lower() in t_str:
+            display_inqs.append(x)
+
+    if not display_inqs:
+        st.markdown("""
+        <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 40px; text-align: center; margin-top: 15px;">
+            <h4 style="color: #64748b; margin-bottom: 8px;">💡 अभी कोई इंक्वायरी नहीं मिली</h4>
+            <p style="color: #94a3b8; font-size: 14px; margin: 0;">
+                जैसे ही कोई ग्राहक आपके WhatsApp नंबर पर फोटो या मैसेज भेजेगा, वह ऑटोमैटिक यहाँ सेव हो जाएगी।
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        for inq_i, inq in enumerate(display_inqs):
+            # Rich high-contrast card
+            p_b64 = inq.get("photo_b64")
+            with st.container():
+                st.markdown(f"""
+                <div style="background: #FFFFFF; border: 1.5px solid #E2E8F0; border-left: 6px solid #2563EB; 
+                            border-radius: 12px; padding: 18px 22px; margin-bottom: 14px; 
+                            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                """, unsafe_allow_html=True)
+                
+                c_card1, c_card2, c_card3 = st.columns([1.2, 2.5, 1.3])
+                with c_card1:
+                    if p_b64:
+                        try:
+                            import base64
+                            from io import BytesIO
+                            st.image(BytesIO(base64.b64decode(p_b64)), caption="📷 Customer's Sample Photo", use_container_width=True)
+                        except Exception:
+                            st.write("📷 [Photo Available]")
+                    else:
+                        st.markdown("""
+                        <div style="background: #F1F5F9; border-radius: 8px; padding: 35px 10px; text-align: center; color: #64748B;">
+                            💬 <b>Text Inquiry</b><br><small>(No Photo)</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                with c_card2:
+                    st.markdown(f"""
+                    <div style="margin-bottom: 6px;">
+                        <span style="font-size: 18px; font-weight: 800; color: #0F172A;">👤 {inq.get('buyer_name', 'Customer')}</span>
+                        <span style="background: #EFF6FF; color: #1D4ED8; padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: 700; margin-left: 8px; border: 1px solid #BFDBFE;">+{inq.get('phone', '')}</span>
+                        <span style="color: #64748B; font-size: 12px; margin-left: 8px;">⏱️ {inq.get('timestamp', '')}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown(f"""
+                    <div style="margin: 8px 0; color: #334155; font-size: 14px;">
+                        🔘 <b>Matched Product:</b> <span style="color: #0369A1; font-weight: 700;">{inq.get('matched_sku', 'N/A')}</span> - {inq.get('matched_name', '')}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    qty_val = inq.get('quantity', 0)
+                    if qty_val:
+                        qty_badge = f"""<span style="background: #DCFCE7; color: #15803D; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; border: 1.5px solid #86EFAC;">📦 Required Qty: {qty_val:,} Gross ({qty_val*144:,} Pcs)</span>"""
+                    else:
+                        qty_badge = """<span style="background: #FEF3C7; color: #B45309; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 700; border: 1.5px solid #FDE68A;">⏳ Awaiting Quantity Confirmation</span>"""
+                    
+                    st.markdown(f"""
+                    <div style="margin-top: 10px;">
+                        {qty_badge}
+                        <span style="background: #F1F5F9; color: #475569; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 8px;">Status: {inq.get('status', 'Active')}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with c_card3:
+                    st.write("")
+                    if st.button("🧾 1-Click Quote (Tab 5)", key=f"btn_inbox_quote_{inq_i}", type="primary", use_container_width=True):
+                        st.session_state["preset_quote_buyer"] = inq.get('buyer_name', '')
+                        st.session_state["preset_quote_phone"] = inq.get('phone', '')
+                        st.session_state["preset_quote_sku"] = inq.get('matched_sku', '')
+                        st.session_state["preset_quote_qty"] = inq.get('quantity') or 200
+                        st.success(f"✅ {inq.get('buyer_name')} का डेटा Tab 5 (1-Click Quotation) में लोड हो गया! ऊपर Tab 5 पर क्लिक करें।")
+                    
+                    # Direct WhatsApp link
+                    phone_clean = re.sub(r'\D', '', str(inq.get('phone', '')))
+                    if phone_clean:
+                        wa_link = f"https://wa.me/{phone_clean}"
+                        st.markdown(f"""
+                        <div style="margin-top: 8px; text-align: center;">
+                            <a href="{wa_link}" target="_blank" style="display: block; background: #25D366; color: white; text-decoration: none; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 13px; box-shadow: 0 2px 4px rgba(37,211,102,0.2);">
+                                💬 Open WhatsApp Chat
+                            </a>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+
+    # Optional Collapsed WhatsApp Simulator at bottom
+    with st.expander("🧪 Test Simulator (Internal Message & Photo Testing)", expanded=False):
+        st.caption("यदि आपके पास असली WhatsApp नहीं है, तो यहाँ से टेस्ट मैसेज भेजकर देख सकते हैं कि बॉट क्या रिप्लाई करता है:")
+        sim_col1, sim_col2 = st.columns([2, 1])
+        with sim_col1:
+            sim_phone = st.text_input("Simulate Customer Phone:", value="919315702804")
+            sim_text = st.text_input("Simulate Customer Message:", value="Namaste, 200 gross button chahiye river shell me")
+        with sim_col2:
+            st.write("")
+            st.write("")
+            if st.button("⚡ Simulate Incoming WhatsApp Message", key="btn_run_sim"):
+                from webhook_bot import process_incoming_whatsapp_message
+                import asyncio
+                mock_msg = {
+                    "contacts": [{"profile": {"name": "Test Customer"}}],
+                    "messages": [{"id": f"sim_{inqs_count+1}", "from": sim_phone, "type": "text", "text": {"body": sim_text}}]
+                }
+                asyncio.run(process_incoming_whatsapp_message(mock_msg))
+                st.success("Message processed! Check response in live inbox above.")
+                st.rerun()
+
+with tabs[1]:
+    # ---------------- TAB 2: AI BUTTON SCANNER (CLEAN PHOTO LAB) ----------------
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%); 
+                padding: 22px 28px; border-radius: 14px; margin-bottom: 20px; 
+                box-shadow: 0 4px 15px rgba(49, 46, 129, 0.15); border-left: 6px solid #818cf8;">
+        <h2 style="color: #ffffff !important; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">
+            🔍 AI Visual Button Matcher & Inventory Scanner
+        </h2>
+        <p style="color: #c7d2fe !important; margin: 5px 0 0 0; font-size: 14px;">
+            कंप्यूटर से फोटो अपलोड करें या कैमरे से लाइव खींचें - AI 2 सेकंड में बटन का प्रकार, साइज और गोदाम का स्टॉक ढूंढेगा।
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
     col_input, col_result = st.columns([1, 1])
     
     with col_input:
@@ -973,7 +1266,7 @@ with tabs[0]:
             st.info("👈 Please select or upload a photo on the left to start matching.")
 
 # ----------------- TAB 2: CATALOG & IMAGE GALLERY -----------------
-with tabs[1]:
+with tabs[2]:
     st.subheader("📂 ABC Buttons Live Master Catalog & Real Product Gallery")
     st.caption("यहाँ सभी बटनों की तस्वीरें और विवरण मौजूद हैं। सभी दरें व स्टॉक अनिवार्य रूप से **GROSS** में हैं (1 Gross = 144 Pieces)।")
     
@@ -1118,7 +1411,7 @@ with tabs[1]:
                 st.rerun()
 
 # ----------------- TAB 3: SALESMAN SAMPLE LOGGER -----------------
-with tabs[2]:
+with tabs[3]:
     st.subheader("🏍️ Salesman Field Sample Logger")
     st.caption("सेल्समैन ने किसी गार्मेंट फैक्ट्री (मर्चेंडाइज़र) को सैंपल कार्ड सौंपा? सिर्फ 1 वॉयस या टेक्स्ट नोट डालें, AI पूरा रिकॉर्ड खुद बना लेगा।")
     
@@ -1204,67 +1497,6 @@ with tabs[2]:
                 st.success("✅ Successfully added to Pipeline! Open Tab 4 to see it.")
 
 # ----------------- TAB 4: PIPELINE & FOLLOW-UP -----------------
-with tabs[3]:
-    st.subheader("📊 Sample Approval Pipeline & Automated Follow-Up")
-    st.caption("दिए गए सैंपल्स को ट्रैक करें। 3 दिन बीतने पर 1-क्लिक में WhatsApp फॉलो-अप भेजकर ऑर्डर क्लोज करें।")
-    
-    for item in st.session_state.sample_pipeline:
-        with st.container():
-            st.markdown(f"""
-            <div class="card-box">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <span style="font-weight: 700; font-size: 17px; color: #0f172a;">{item['company']}</span>
-                        <span style="margin-left: 10px; color: #64748b; font-size: 13px;">({item['location']})</span><br>
-                        <span style="color: #475569; font-size: 14px;">Contact: <b>{item['contact']}</b> | SKU: <b>{item['sku']}</b></span><br>
-                        <small style="color: #0284c7; font-weight: 600;">Bulk Potential: {item['bulk_est']}</small>
-                    </div>
-                    <div style="text-align: right;">
-                        <span style="background: {'#fef3c7' if item['days_ago'] >= 3 else '#e0f2fe'}; 
-                                     color: {'#92400e' if item['days_ago'] >= 3 else '#0369a1'}; 
-                                     padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 12px;">
-                            {'⚠️ ' if item['days_ago'] >= 3 else '⏱️ '}{item['days_ago']} Days Ago
-                        </span><br>
-                        <small style="color: #64748b;">Status: {item['status']}</small>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            is_order_won = "Order Won" in item.get('status', '')
-            if is_order_won:
-                st.success(f"🎉 **Order Confirmed & Won ({item['bulk_est']})!** Sample trial completed. Follow-up automated reminders are STOPPED.")
-            else:
-                c1, c2, c3, c4 = st.columns([2.0, 0.8, 0.8, 0.9])
-                with c1:
-                    custom_msg = item.get("followup_msg")
-                    if not custom_msg:
-                        contact_fname = item['contact'].split()[0]
-                        custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
-                    st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
-                with c2:
-                    clean_msg = custom_msg.strip().replace('"', '')
-                    encoded_msg = urllib.parse.quote(clean_msg)
-                    wa_url = f"https://api.whatsapp.com/send?text={encoded_msg}"
-                    st.link_button("📲 WhatsApp", wa_url, use_container_width=True)
-                with c3:
-                    if send_whatsapp_text and st.button("⚡ Meta API", key=f"btn_meta_{item['id']}", help="Dispatch via Official Meta Cloud API"):
-                        with st.spinner("Sending follow-up..."):
-                            res_fu = send_whatsapp_text("919315702804", clean_msg)
-                            if res_fu.get("success"):
-                                st.success("Sent to WhatsApp!")
-                                st.toast("Sample follow-up delivered!")
-                            else:
-                                st.error(f"Error: {res_fu.get('error')}")
-                with c4:
-                    if st.button(f"✅ Won", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
-                        item['status'] = "🎉 Order Won (Bulk Dispatch)"
-                        save_persistent_data()
-                        st.toast(f"🎉 Fantastic! Order confirmed for {item['company']}. Follow-ups stopped.")
-                        st.balloons()
-                        st.rerun()
-
-# ----------------- TAB 5: 1-CLICK B2B QUOTATION -----------------
 with tabs[4]:
     st.subheader("🧾 1-Click Proforma Quotation Generator (Pricing in Gross)")
     st.caption("बायर को 30 सेकंड में प्रोफेशनल कोटेशन (दरें व क्वांटिटी अनिवार्य रूप से ग्रॉस में) तैयार करके भेजें।")
@@ -1368,7 +1600,7 @@ with tabs[4]:
         
         discount_html = f"""<p style="margin: 4px 0; color: #16a34a; font-size: 13.5px;"><b>Less: Volume Discount ({q_discount}%):</b> <span style="font-weight: 700;">- ₹{discount_amount:,.2f}</span></p>""" if q_discount > 0 else ""
         
-        st.markdown(f"""
+        st.html(f"""
         <div class="proforma-canvas">
             <div class="proforma-header-bar">
                 <div>
@@ -1452,7 +1684,7 @@ with tabs[4]:
                 <div style="margin-top: 4px; color: #334155;"><b>Bank Transfer:</b> HDFC Bank, Kalkaji Branch • A/C: <b>50200084920192</b> • IFSC: <b>HDFC0000123</b></div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
         
         st.write("")
         c_dl1, c_dl2 = st.columns(2)
@@ -1579,6 +1811,67 @@ with tabs[4]:
 
 # ----------------- TAB 6: PAYMENT REMINDER -----------------
 with tabs[5]:
+    st.subheader("📊 Sample Approval Pipeline & Automated Follow-Up")
+    st.caption("दिए गए सैंपल्स को ट्रैक करें। 3 दिन बीतने पर 1-क्लिक में WhatsApp फॉलो-अप भेजकर ऑर्डर क्लोज करें।")
+    
+    for item in st.session_state.sample_pipeline:
+        with st.container():
+            st.markdown(f"""
+            <div class="card-box">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-weight: 700; font-size: 17px; color: #0f172a;">{item['company']}</span>
+                        <span style="margin-left: 10px; color: #64748b; font-size: 13px;">({item['location']})</span><br>
+                        <span style="color: #475569; font-size: 14px;">Contact: <b>{item['contact']}</b> | SKU: <b>{item['sku']}</b></span><br>
+                        <small style="color: #0284c7; font-weight: 600;">Bulk Potential: {item['bulk_est']}</small>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="background: {'#fef3c7' if item['days_ago'] >= 3 else '#e0f2fe'}; 
+                                     color: {'#92400e' if item['days_ago'] >= 3 else '#0369a1'}; 
+                                     padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 12px;">
+                            {'⚠️ ' if item['days_ago'] >= 3 else '⏱️ '}{item['days_ago']} Days Ago
+                        </span><br>
+                        <small style="color: #64748b;">Status: {item['status']}</small>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            is_order_won = "Order Won" in item.get('status', '')
+            if is_order_won:
+                st.success(f"🎉 **Order Confirmed & Won ({item['bulk_est']})!** Sample trial completed. Follow-up automated reminders are STOPPED.")
+            else:
+                c1, c2, c3, c4 = st.columns([2.0, 0.8, 0.8, 0.9])
+                with c1:
+                    custom_msg = item.get("followup_msg")
+                    if not custom_msg:
+                        contact_fname = item['contact'].split()[0]
+                        custom_msg = f"Hello {contact_fname} ji, hope you are doing well! Jo {item['sku']} ke samples diye the, kya fabric par trial check ho gaya? Approval mil jaye toh bataiyega, bulk stock arrange karwa denge."
+                    st.caption(f"Suggested Follow-Up: *\"{custom_msg}\"*")
+                with c2:
+                    clean_msg = custom_msg.strip().replace('"', '')
+                    encoded_msg = urllib.parse.quote(clean_msg)
+                    wa_url = f"https://api.whatsapp.com/send?text={encoded_msg}"
+                    st.link_button("📲 WhatsApp", wa_url, use_container_width=True)
+                with c3:
+                    if send_whatsapp_text and st.button("⚡ Meta API", key=f"btn_meta_{item['id']}", help="Dispatch via Official Meta Cloud API"):
+                        with st.spinner("Sending follow-up..."):
+                            res_fu = send_whatsapp_text("919315702804", clean_msg)
+                            if res_fu.get("success"):
+                                st.success("Sent to WhatsApp!")
+                                st.toast("Sample follow-up delivered!")
+                            else:
+                                st.error(f"Error: {res_fu.get('error')}")
+                with c4:
+                    if st.button(f"✅ Won", key=f"btn_won_{item['id']}", help="Click when buyer confirms bulk order - stops all future follow-ups!"):
+                        item['status'] = "🎉 Order Won (Bulk Dispatch)"
+                        save_persistent_data()
+                        st.toast(f"🎉 Fantastic! Order confirmed for {item['company']}. Follow-ups stopped.")
+                        st.balloons()
+                        st.rerun()
+
+# ----------------- TAB 5: 1-CLICK B2B QUOTATION -----------------
+with tabs[6]:
     st.subheader("💳 Polite Payment & Ledger Balance Assistant")
     st.caption("उधारी वाले ग्राहकों को बिना रिश्ते खराब किए, बेहद शालीन और कॉर्पोरेट भाषा में पेमेंट रिमाइंडर भेजें।")
     
@@ -1653,325 +1946,3 @@ with tabs[5]:
                     st.toast("Payment reminder message copied to clipboard!")
 
 # ----------------- TAB 8: WHATSAPP LIVE SIMULATOR -----------------
-with tabs[6]:
-    st.subheader("💬 WhatsApp Live Simulator (Buyer & Salesman Live Testing)")
-    st.caption("यहाँ बिना किसी सिम कार्ड या WhatsApp API के असली चैट की लाइव टेस्टिंग करें। बायर बनकर सवाल पूछें या सेल्समैन बनकर रिपोर्ट करें!")
-
-    OFFICIAL_BUYER_GREETING = "Hello! Welcome to ABC Buttons.\n\nThank you for connecting with us. We manufacture a wide range of natural and customised buttons for the garment and fashion industry.\n\nHow may we assist you today?"
-
-    if "buyer_chat" not in st.session_state or (len(st.session_state.buyer_chat) == 1 and "Mother of Pearl (Shell)" in st.session_state.buyer_chat[0]["content"]):
-        st.session_state.buyer_chat = [
-            {
-                "role": "model",
-                "content": OFFICIAL_BUYER_GREETING
-            }
-        ]
-
-    # Replace old default greeting if present as first message
-    if st.session_state.buyer_chat and "Mother of Pearl (Shell)" in st.session_state.buyer_chat[0]["content"]:
-        st.session_state.buyer_chat[0]["content"] = OFFICIAL_BUYER_GREETING
-
-    if "salesman_chat" not in st.session_state:
-        st.session_state.salesman_chat = [
-            {
-                "role": "model",
-                "content": "Namaste Rahul ji! 🏍️ ABC Buttons Sales Desk active hai.\n\nAaj aap kis export house / factory visit par hain? Sample delivery ka update yahan type karein ya voice note share karein."
-            }
-        ]
-
-    # Clean up any previously stored raw json in chat session
-    for msg in st.session_state.buyer_chat:
-        if msg["role"] == "model" and "whatsapp_buyer_draft" in msg["content"]:
-            raw_c = msg["content"].strip()
-            if raw_c.startswith("```json"):
-                raw_c = raw_c[7:].strip()
-                if raw_c.endswith("```"):
-                    raw_c = raw_c[:-3].strip()
-            try:
-                pj = json.loads(raw_c)
-                msg["content"] = pj.get("whatsapp_buyer_draft", msg["content"])
-            except Exception:
-                pass
-
-    sim_role = st.radio(
-        "चुनें कि आप किसकी तरह चैट टेस्ट करना चाहते हैं (Select Role):",
-        [
-            "👤 1. Buyer / Merchandiser Mode (बायर की पूछताछ व सैंपल कार्ड की लाइव टेस्टिंग)",
-            "🏍️ 2. Salesman Mode (सेल्समैन की फील्ड रिपोर्टिंग व ऑटो-पाइपलाइन एंट्री)"
-        ],
-        horizontal=True
-    )
-
-    col_sim_chat, col_sim_inspector = st.columns([1.2, 1])
-
-    # ==================== BUYER SIMULATOR ====================
-    if sim_role.startswith("👤"):
-        with col_sim_chat:
-            st.markdown("""
-            <div style="background: #075e54; color: white; padding: 12px 16px; border-radius: 8px 8px 0 0; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="font-size: 22px;">🏢</div>
-                    <div>
-                        <b style="font-size: 15px;">ABC Buttons Pvt Ltd (Verified)</b><br>
-                        <small style="color: #a7f3d0;">🟢 Online • Official WhatsApp Business</small>
-                    </div>
-                </div>
-                <div style="font-size: 12px; background: rgba(255,255,255,0.18); padding: 4px 10px; border-radius: 4px;">
-                    Role: Buyer View
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            with st.container(height=450):
-                for msg in st.session_state.buyer_chat:
-                    clean_text = msg["content"].split("```SAMPLE_CARD_DISPATCH")[0].strip()
-                    if clean_text.startswith("```json"):
-                        clean_text = clean_text[7:].strip()
-                        if clean_text.endswith("```"):
-                            clean_text = clean_text[:-3].strip()
-                    if clean_text.startswith("{") and ("detected_type" in clean_text or "whatsapp_buyer_draft" in clean_text):
-                        try:
-                            jd = json.loads(clean_text)
-                            if "whatsapp_buyer_draft" in jd:
-                                clean_text = jd["whatsapp_buyer_draft"]
-                            else:
-                                clean_text = f"Namaste Sir! 🙏 17L standard button size nahi hota, garment industry me **18L (11.5 mm)** sabse popular standard size chalta hai.\n\nRecommended: **{jd.get('best_match_sku', 'ABC-136')}**\n{jd.get('match_reason', '')}\n\nSabhi rates strictly ₹ / Gross me hain aur Central Godown me ready stock hai. Kya hum aapko iska Free Sample Card bhej dein?"
-                        except Exception:
-                            pass
-                    if msg["role"] == "user":
-                        with st.chat_message("user", avatar="👤"):
-                            st.write(clean_text)
-                    else:
-                        with st.chat_message("assistant", avatar="🔘"):
-                            st.write(clean_text)
-
-            # Input form
-            with st.form("buyer_input_form", clear_on_submit=True):
-                buyer_msg = st.text_input("💬 Type message as Buyer (e.g. sample card request, price inquiry, MOQ):", placeholder="Bhaiya 18L aur 24L MOP shell button ka Sample Card bhej do, Orient Craft Okhla ke liye...")
-                buyer_img_file = st.file_uploader("📎 (Optional) Attach Button Photo with message:", type=["jpg", "png", "jpeg"], key="sim_buyer_img")
-                
-                col_btn1, col_btn2 = st.columns([1, 1])
-                submitted = col_btn1.form_submit_button("🚀 Send to ABC Buttons WhatsApp", type="primary", use_container_width=True)
-                clear_btn = col_btn2.form_submit_button("🗑️ Clear Chat", use_container_width=True)
-
-            if clear_btn:
-                st.session_state.buyer_chat = [
-                    {
-                        "role": "model",
-                        "content": OFFICIAL_BUYER_GREETING
-                    }
-                ]
-                st.rerun()
-
-            if submitted and (buyer_msg.strip() or buyer_img_file):
-                img_bytes = None
-                display_msg = buyer_msg.strip()
-                if buyer_img_file:
-                    raw_img = Image.open(buyer_img_file)
-                    if raw_img.mode != "RGB":
-                        raw_img = raw_img.convert("RGB")
-                    buf = BytesIO()
-                    raw_img.save(buf, format="JPEG")
-                    img_bytes = buf.getvalue()
-                    if not display_msg:
-                        display_msg = "[Attached Button Photo] Please check stock and sample card for this button."
-
-                st.session_state.buyer_chat.append({"role": "user", "content": display_msg})
-                
-                with st.spinner("AI is typing reply from ABC Buttons WhatsApp..."):
-                    try:
-                        ai_reply = simulate_buyer_chat(st.session_state.buyer_chat[:-1], display_msg, image_bytes=img_bytes)
-                        st.session_state.buyer_chat.append({"role": "model", "content": ai_reply})
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error in simulation: {str(e)}")
-
-        with col_sim_inspector:
-            st.markdown("### 🔍 Live Action Inspector (बायर मोड)")
-            st.info("💡 **Active Rule:** AI System Prompt #1 (`visual_matcher`) से सीधे कनेक्टेड है। यह ऑटोमैटिकली डिटेक्ट करता है कि बायर ने **Sample Card** माँगा है या **Rate Inquiry** की है।")
-
-            st.markdown("#### ⚡ 1-Click Quick Test Questions (क्लिक करके टेस्ट करें):")
-            col_q1, col_q2 = st.columns(2)
-            if col_q1.button("📦 1. Request Sample Card", use_container_width=True):
-                quick_msg = "Bhaiya humein 18L aur 24L Natural Shell buttons ka Sample Card chahiye, Shahi Exports Okhla Phase 2 ke liye. Aaj bhej sakte ho?"
-                st.session_state.buyer_chat.append({"role": "user", "content": quick_msg})
-                with st.spinner("AI responding..."):
-                    ai_reply = simulate_buyer_chat(st.session_state.buyer_chat[:-1], quick_msg)
-                    st.session_state.buyer_chat.append({"role": "model", "content": ai_reply})
-                st.rerun()
-
-            if col_q2.button("💰 2. Ask Rate in Gross", use_container_width=True):
-                quick_msg = "ABC-139 Natural Shell button ka 350 Gross ka kya rate lagega with 12% GST and ready stock kitna hai?"
-                st.session_state.buyer_chat.append({"role": "user", "content": quick_msg})
-                with st.spinner("AI responding..."):
-                    ai_reply = simulate_buyer_chat(st.session_state.buyer_chat[:-1], quick_msg)
-                    st.session_state.buyer_chat.append({"role": "model", "content": ai_reply})
-                st.rerun()
-
-            col_q3, col_q4 = st.columns(2)
-            if col_q3.button("🔘 3. Natural Horn Button Inquiry", use_container_width=True):
-                quick_msg = "Humein genuine natural buffalo horn buttons chahiye 32L size mein. Kya iska sample card available hai?"
-                st.session_state.buyer_chat.append({"role": "user", "content": quick_msg})
-                with st.spinner("AI responding..."):
-                    ai_reply = simulate_buyer_chat(st.session_state.buyer_chat[:-1], quick_msg)
-                    st.session_state.buyer_chat.append({"role": "model", "content": ai_reply})
-                st.rerun()
-
-            if col_q4.button("🔤 4. Custom Laser Engraving", use_container_width=True):
-                quick_msg = "Kya aap buttons ke rim par brand name ka laser logo engraving kar sakte ho? MOQ kitna hoga?"
-                st.session_state.buyer_chat.append({"role": "user", "content": quick_msg})
-                with st.spinner("AI responding..."):
-                    ai_reply = simulate_buyer_chat(st.session_state.buyer_chat[:-1], quick_msg)
-                    st.session_state.buyer_chat.append({"role": "model", "content": ai_reply})
-                st.rerun()
-
-            # Check if latest AI reply contains Sample Card dispatch block
-            latest_ai_msg = st.session_state.buyer_chat[-1]["content"] if st.session_state.buyer_chat else ""
-            if "SAMPLE_CARD_DISPATCH" in latest_ai_msg:
-                try:
-                    dispatch_raw = latest_ai_msg.split("```SAMPLE_CARD_DISPATCH")[1].split("```")[0].strip()
-                    dispatch_data = json.loads(dispatch_raw)
-                    st.markdown("""
-                    <div style="background: #f0fdf4; border: 2px solid #22c55e; border-radius: 10px; padding: 15px; margin-top: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #166534;">📦 Sample Card Courier Dispatch Slip (Auto-Generated)</h4>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>🏢 Buyer / Company:</b> """ + str(dispatch_data.get("buyer_company", "Shahi Exports / Buyer")) + """</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>👤 Contact Person:</b> """ + str(dispatch_data.get("contact_person", "Merchandiser")) + """</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>🔘 Button Requested:</b> """ + str(dispatch_data.get("items_requested", "Shell Buttons")) + """</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>📏 Sizes:</b> """ + str(dispatch_data.get("sizes", "14L, 18L, 24L")) + """</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>📍 Delivery Address:</b> """ + str(dispatch_data.get("delivery_address", "Okhla Phase 2")) + """</p>
-                        <p style="margin: 3px 0; font-size: 14px; color: #15803d;"><b>🚚 Status:</b> """ + str(dispatch_data.get("dispatch_status", "Scheduled for Today 3:00 PM")) + """</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if st.button("🖨️ Print Sample Card Packing Slip for Dispatch Team", use_container_width=True):
-                        st.toast("Packing Slip sent to dispatch printer / runner!")
-                except Exception:
-                    pass
-
-    # ==================== SALESMAN SIMULATOR ====================
-    else:
-        with col_sim_chat:
-            st.markdown("""
-            <div style="background: #1e3a8a; color: white; padding: 12px 16px; border-radius: 8px 8px 0 0; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="font-size: 22px;">🏍️</div>
-                    <div>
-                        <b style="font-size: 15px;">ABC Buttons Sales Desk</b><br>
-                        <small style="color: #93c5fd;">🟢 Online • Field Executive Portal</small>
-                    </div>
-                </div>
-                <div style="font-size: 12px; background: rgba(255,255,255,0.18); padding: 4px 10px; border-radius: 4px;">
-                    Executive: Rahul (Delhi NCR / Noida)
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            with st.container(height=450):
-                for msg in st.session_state.salesman_chat:
-                    clean_text = msg["content"].split("```SALESMAN_LOG_DISPATCH")[0].strip()
-                    if msg["role"] == "user":
-                        with st.chat_message("user", avatar="🏍️"):
-                            st.write(clean_text)
-                    else:
-                        with st.chat_message("assistant", avatar="🏢"):
-                            st.write(clean_text)
-
-            with st.form("salesman_input_form", clear_on_submit=True):
-                sm_msg = st.text_input("💬 Type / Voice Note as Salesman:", placeholder="Sir aaj Richa Global Okhla me Rajesh ji ko 24L MOP button ka sample diya...")
-                col_btn1, col_btn2 = st.columns([1, 1])
-                submitted_sm = col_btn1.form_submit_button("🚀 Send to ABC Sales Desk", type="primary", use_container_width=True)
-                clear_sm = col_btn2.form_submit_button("🗑️ Clear Chat", use_container_width=True)
-
-            if clear_sm:
-                st.session_state.salesman_chat = [
-                    {
-                        "role": "model",
-                        "content": "Namaste Rahul ji! 🏍️ ABC Buttons Sales Desk active hai.\n\nAaj aap kis export house / factory visit par hain? Sample delivery ka update yahan type karein ya voice note share karein."
-                    }
-                ]
-                st.rerun()
-
-            if submitted_sm and sm_msg.strip():
-                st.session_state.salesman_chat.append({"role": "user", "content": sm_msg.strip()})
-                with st.spinner("AI parsing field update and updating pipeline..."):
-                    try:
-                        ai_reply = simulate_salesman_chat(st.session_state.salesman_chat[:-1], sm_msg.strip())
-                        st.session_state.salesman_chat.append({"role": "model", "content": ai_reply})
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error in simulation: {str(e)}")
-
-        with col_sim_inspector:
-            st.markdown("### 🔍 Live Action Inspector (सेल्समैन मोड)")
-            st.info("💡 **Active Rule:** AI System Prompt #2 (`salesman_logger`) से कनेक्टेड है। सेल्समैन की टूटी-फूटी भाषा से अपने-आप कंपनी का नाम, बायर का नाम और बल्क ऑर्डर निकालकर **Sample Pipeline** में जोड़ देता है।")
-
-            st.markdown("#### ⚡ 1-Click Field Note Simulations:")
-            if st.button("🏢 Sample Delivery at Orient Craft (Gurgaon)", use_container_width=True):
-                quick_sm = "Sir aaj Orient Craft Udyog Vihar Gurgaon me Pooja Verma ji ko Turquoise Shell button ka sample card de diya hai. Unhe 175 gross ka bulk order chahiye."
-                st.session_state.salesman_chat.append({"role": "user", "content": quick_sm})
-                with st.spinner("Processing..."):
-                    ai_reply = simulate_salesman_chat(st.session_state.salesman_chat[:-1], quick_sm)
-                    st.session_state.salesman_chat.append({"role": "model", "content": ai_reply})
-                st.rerun()
-
-            if st.button("🏭 Sample Delivery at Shahi Exports (Noida)", use_container_width=True):
-                quick_sm = "Amit Sharma ji Shahi Exports Sector 59 Noida ko 25 pieces Natural Shell buttons hand-over kar diye. Trial ke baad 400 Gross ka order banega."
-                st.session_state.salesman_chat.append({"role": "user", "content": quick_sm})
-                with st.spinner("Processing..."):
-                    ai_reply = simulate_salesman_chat(st.session_state.salesman_chat[:-1], quick_sm)
-                    st.session_state.salesman_chat.append({"role": "model", "content": ai_reply})
-                st.rerun()
-
-            latest_sm_msg = st.session_state.salesman_chat[-1]["content"] if st.session_state.salesman_chat else ""
-            if "SALESMAN_LOG_DISPATCH" in latest_sm_msg:
-                try:
-                    sm_raw = latest_sm_msg.split("```SALESMAN_LOG_DISPATCH")[1].split("```")[0].strip()
-                    sm_data = json.loads(sm_raw)
-                    
-                    contact_name = sm_data.get("contact", "Merchandiser")
-                    company_name = sm_data.get("company", "Company")
-                    buyer_deliv_msg = sm_data.get("buyer_delivery_message") or f"Dear {contact_name}, Greetings from ABC Buttons! Thank you for receiving our button samples. We hope you find them suitable for your collection. Looking forward to working with {company_name}. Warm regards, Team ABC Buttons (9310722777)"
-                    buyer_fu_msg = sm_data.get("buyer_followup_message") or f"Dear {contact_name}, Hope you are doing well. Just wanted to follow up regarding the button samples shared by ABC Buttons. Have you had an opportunity to review them on your garments? Warm regards, Team ABC Buttons"
-
-                    st.markdown(f"""
-                    <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 10px; padding: 15px; margin-top: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #1e40af;">📋 Auto-Logged into Sample Pipeline (Live Sync)</h4>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>🏢 Company:</b> {company_name}</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>👤 Contact:</b> {contact_name}</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>📍 Location:</b> {sm_data.get("location", "Delhi/NCR")}</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>🔘 Button SKU:</b> {sm_data.get("sku", "Sample Card")}</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>📦 Sample Qty:</b> {sm_data.get("sample_qty", "Standard Samples")}</p>
-                        <p style="margin: 3px 0; font-size: 14px;"><b>🎯 Bulk Est:</b> {sm_data.get("bulk_est", "Pending Confirmation")}</p>
-                        <p style="margin: 3px 0; font-size: 14px; color: #b45309;"><b>⏰ Follow-Up Scheduled:</b> {sm_data.get("followup_date", "3 days from today")}</p>
-                        
-                        <div style="margin-top: 12px; padding: 10px; background: #ffffff; border-radius: 8px; border: 1px solid #bfdbfe;">
-                            <p style="margin: 0 0 4px 0; font-size: 13px; font-weight: 700; color: #166534;">📱 1. बायर ({contact_name}) को भेजा गया डिलीवरी मैसेज:</p>
-                            <div style="font-size: 12px; color: #1e293b; line-height: 1.4; background: #dcf8c6; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px;">
-                                {buyer_deliv_msg}
-                            </div>
-                            <p style="margin: 0 0 4px 0; font-size: 13px; font-weight: 700; color: #92400e;">⏰ 2. {sm_data.get("followup_date", "3 din baad")} जाने वाला ऑटोमैटिक फॉलो-अप मैसेज:</p>
-                            <div style="font-size: 12px; color: #1e293b; line-height: 1.4; background: #fef3c7; padding: 8px 10px; border-radius: 6px;">
-                                {buyer_fu_msg}
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button("➕ Push Record to Tab 4 (Sample Pipeline Register)", use_container_width=True):
-                        new_entry = {
-                            "id": f"SMP-{len(st.session_state.sample_pipeline) + 101}",
-                            "company": company_name,
-                            "contact": contact_name,
-                            "location": sm_data.get("location", "Delhi NCR"),
-                            "sku": sm_data.get("sku", "Button Sample"),
-                            "sample_qty": sm_data.get("sample_qty", "Sample Card"),
-                            "bulk_est": sm_data.get("bulk_est", "TBD"),
-                            "date": "Today",
-                            "days_ago": 0,
-                            "status": "Sample Dispatched"
-                        }
-                        st.session_state.sample_pipeline.insert(0, new_entry)
-                        st.toast("✅ Added to Tab 4 (Sample Pipeline)! Open Tab 4 to see it live.")
-                except Exception:
-                    pass
-
-
