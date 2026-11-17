@@ -78,6 +78,62 @@ def save_live_inquiries():
         print(f"Error saving inquiries: {e}")
 
 
+def log_chat_event(phone: str, buyer_name: str, sender: str, msg_type: str, text: str, photo_b64: str = None, sku: str = None):
+    try:
+        import datetime
+        t_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        time_short = datetime.datetime.now().strftime("%H:%M")
+        
+        entry = next((x for x in live_whatsapp_inquiries if x.get("phone") == phone), None)
+        if not entry:
+            entry = {
+                "id": f"inq_{phone}",
+                "timestamp": t_now,
+                "buyer_name": buyer_name or "Buyer",
+                "phone": phone,
+                "photo_b64": photo_b64 if sender == "buyer" and photo_b64 else "",
+                "matched_sku": sku or "Inquiry",
+                "matched_name": (get_item_by_sku(sku) or {}).get("name", "Button Inquiry") if sku else "Button Inquiry",
+                "matched_size": (get_item_by_sku(sku) or {}).get("size_ligne", "") if sku else "",
+                "quantity": 0,
+                "status": "Chat Active",
+                "notes": text if msg_type == "text" else "",
+                "chat_messages": []
+            }
+            live_whatsapp_inquiries.insert(0, entry)
+        else:
+            if entry in live_whatsapp_inquiries:
+                live_whatsapp_inquiries.remove(entry)
+            live_whatsapp_inquiries.insert(0, entry)
+            entry["timestamp"] = t_now
+            if buyer_name and buyer_name != "Sir":
+                entry["buyer_name"] = buyer_name
+            if photo_b64 and sender == "buyer":
+                entry["photo_b64"] = photo_b64
+            if sku and sku != "Inquiry":
+                entry["matched_sku"] = sku
+                m_item = get_item_by_sku(sku)
+                if m_item:
+                    entry["matched_name"] = m_item.get("name", entry.get("matched_name", ""))
+                    entry["matched_size"] = m_item.get("size_ligne", entry.get("matched_size", ""))
+
+        if "chat_messages" not in entry or not isinstance(entry["chat_messages"], list):
+            entry["chat_messages"] = []
+            
+        entry["chat_messages"].append({
+            "sender": sender,
+            "sender_name": buyer_name if sender == "buyer" else "ABC Buttons Assistant",
+            "type": msg_type,
+            "text": text,
+            "photo_b64": photo_b64,
+            "sku": sku,
+            "time": time_short
+        })
+        save_live_inquiries()
+    except Exception as e:
+        print(f"Error logging chat: {e}")
+
+
 def get_item_by_sku(sku: str):
     for item in SAMPLE_CATALOG:
         if item.get("sku") == sku:
@@ -263,6 +319,7 @@ async def process_incoming_whatsapp_message(value: dict):
         text_body = msg.get("text", {}).get("body", "").strip()
         lower_text = text_body.lower()
         print(f"💬 [INCOMING TEXT] From: {from_phone} | Message: '{text_body}'")
+        log_chat_event(from_phone, contact_name, "buyer", "text", text_body)
 
         # ---------------- STEP A: HANDLE SIMILAR PERMISSION RESPONSE ----------------
         if session.get("waiting_for_similar_permission"):
@@ -715,20 +772,79 @@ async def process_incoming_whatsapp_message(value: dict):
         
         has_qty_in_msg = bool(gross_match or pcs_match or (general_num and any(w in lower_text for w in ["gross", "order", "chahiye", "pack", "dispatch", "pcs", "pieces", "gr"])))
         
+        # Check Option selection or Product Catalog Text Inquiries
+        text_sku_map = [
+            (["agoya", "agora", "shirt pearl", "agoya shell", "white pearl"], "ABC-136"),
+            (["river shell", "river", "white river", "saucer rim"], "ABC-139"),
+            (["gold cowrie", "gold kaudi", "metallic cowrie", "24k"], "ABC-153"),
+            (["cowrie", "kaudi", "kodi", "sea cowrie"], "ABC-152"),
+            (["horn", "buffalo horn", "water buffalo"], "ABC-HRN-24L-06"),
+            (["corozo", "tagua", "vegetable ivory"], "ABC-COR-24L-16"),
+            (["coconut", "nariyal", "coco"], "ABC-COCO-24L-18"),
+            (["wood", "wooden", "sheesham", "hardwood"], "ABC-WOOD-32L-19"),
+            (["metal shank", "metal", "brass", "shank", "blazer"], "ABC-MTL-24L-14"),
+            (["polyester", "faux mop", "chalk", "resin"], "ABC-POLY-18L-10"),
+            (["sample card", "hanger card", "hanger"], "ABC-SAMPLE-CARD-01"),
+            (["black pearl", "charcoal black", "smoky shell", "black lip"], "ABC-151"),
+            (["caramel", "gold shell", "champagne"], "ABC-137"),
+            (["turquoise", "teal", "ocean turquoise"], "ABC-142"),
+            (["pink", "blush", "cherry blossom"], "ABC-144"),
+            (["violet", "purple", "plum"], "ABC-149"),
+            (["spotted", "brown spot"], "ABC-143"),
+            (["gunmetal", "trocas"], "ABC-141"),
+        ]
+        
+        matched_text_sku = None
+        for kws, t_sku in text_sku_map:
+            if any(k in lower_text for k in kws):
+                matched_text_sku = t_sku
+                break
+
+        if matched_text_sku:
+            item = get_item_by_sku(matched_text_sku) or SAMPLE_CATALOG[0]
+            session["matched_sku"] = item["sku"]
+            session["matched_name"] = item["name"]
+            session["matched_size"] = item.get("size_ligne", "")
+            
+            # If quantity is not yet mentioned in this message, send exact stock details & ask for quantity
+            if not has_qty_in_msg:
+                p_img_path = os.path.join(CAT_DIR, f"{item['sku']}.jpg")
+                if os.path.exists(p_img_path):
+                    with open(p_img_path, "rb") as fp:
+                        p_img_bytes = fp.read()
+                    best_caption = (
+                        f"🏆 *Ready Stock Available: {item['name']}*\n"
+                        f"• SKU: {item['sku']} • Size: {item.get('size_ligne', '')} • {item.get('holes', '')}\n"
+                        f"• Ready Godown Stock: *{item.get('stock_gross', 0):,} Gross* ({item.get('stock_gross', 0)*144:,} Pcs)\n"
+                        f"• Standard Rate: *₹{item.get('rate_per_gross', 0)} / Gross*\n\n"
+                        f"100% genuine export quality stock Central Godown, New Delhi me available hai."
+                    )
+                    send_whatsapp_image(from_phone, p_img_bytes, best_caption)
+                    log_chat_event(from_phone, contact_name, "bot", "image", best_caption, sku=item['sku'])
+                    await asyncio.sleep(1.2)
+                    
+                reply_text = (
+                    f"Ji {salutation}, hamare paas {item['name']} ready godown stock me available hai ({item.get('stock_gross', 0):,} Gross stock).\n\n"
+                    f"Aapko kis size me aur lagbhag kitni quantity (Gross) me requirement hai?"
+                )
+                send_whatsapp_text(from_phone, reply_text)
+                log_chat_event(from_phone, contact_name, "bot", "text", reply_text)
+                return
+
         # Check Option selection
-        if "option 1" in lower_text or "136" in lower_text or "agoya" in lower_text:
+        if "option 1" in lower_text or "136" in lower_text:
             session["matched_sku"] = "ABC-136"
             session["matched_name"] = "ABC-136 Agoya Shell Button"
-        elif "option 2" in lower_text or "139" in lower_text or "river" in lower_text:
+        elif "option 2" in lower_text or "139" in lower_text:
             session["matched_sku"] = "ABC-139"
             session["matched_name"] = "ABC-139 Natural White River Shell Button"
-        elif "option 3" in lower_text or "137" in lower_text or "caramel" in lower_text or "gold" in lower_text:
+        elif "option 3" in lower_text or "137" in lower_text:
             session["matched_sku"] = "ABC-137"
             session["matched_name"] = "ABC-137 Caramel Gold MOP Shell Button"
-        elif "141" in lower_text or "smoky" in lower_text:
+        elif "141" in lower_text:
             session["matched_sku"] = "ABC-141"
             session["matched_name"] = "ABC-141 Smoky Grey River Shell Button"
-        elif "142" in lower_text or "turquoise" in lower_text or "teal" in lower_text:
+        elif "142" in lower_text:
             session["matched_sku"] = "ABC-142"
             session["matched_name"] = "ABC-142 Turquoise Blue Tinted Shell Button"
 
@@ -817,10 +933,12 @@ async def process_incoming_whatsapp_message(value: dict):
                         "Ji sir, aap button ka sample ya photo share kar dijiye, taaki hum sahi product identify kar sakein."
                     )
                 else:
-                    send_whatsapp_text(
-                        from_phone,
-                        f"Ji {salutation}, batayein sir, aage kya update hai?"
+                    help_msg = (
+                        f"Ji {salutation}, garments ke liye aapko kis type ya design ke buttons chahiye? "
+                        f"Aap button ka sample photo ya naam/specification yahan share kar sakte hain, hum turant available ready stock check karke batate hain."
                     )
+                    send_whatsapp_text(from_phone, help_msg)
+                    log_chat_event(from_phone, contact_name, "bot", "text", help_msg)
             else:
                 welcome_msg = (
                     "Namaste! ABC Buttons mein aapka swagat hai.\n\n"
@@ -829,6 +947,7 @@ async def process_incoming_whatsapp_message(value: dict):
                     "Batayein sir, aapko kis type ke buttons chahiye?"
                 )
                 send_whatsapp_text(from_phone, welcome_msg)
+                log_chat_event(from_phone, contact_name, "bot", "text", welcome_msg)
 
 # ----------------- WEBHOOK ENDPOINTS -----------------
 
